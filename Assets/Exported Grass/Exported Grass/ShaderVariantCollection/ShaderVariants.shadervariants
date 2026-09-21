@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!200 &20000000
+ShaderVariantCollection:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ShaderVariants
+  m_Shaders:
+  - first: {fileID: 4800000, guid: d7b12e5d0f0ad244f958171d8a2c8e62, type: 3}
+    second:
+      variants:
+      - keywords: SOFTMASKABLE
+        passType: 0
+  - first: {fileID: 4800000, guid: 4c6bc9bd5b80bf84684ec746d6277175, type: 3}
+    second:
+      variants:
+      - keywords:
+        passType: 0
+  - first: {fileID: 4800000, guid: c9be587891b86b64ebec8271feb8834a, type: 3}
+    second:
+      variants:
+      - keywords:
+        passType: 0
+      - keywords: SOFTMASKABLE
+        passType: 0
+      - keywords: SOFTMASKABLE UNITY_UI_ALPHACLIP
+        passType: 0
+      - keywords: UNITY_UI_ALPHACLIP
+        passType: 0
+  - first: {fileID: 4800000, guid: 86ff12909a35c474787f8cb87badf854, type: 3}
+    second:
+      variants:
+      - keywords:
+        passType: 0
+  - first: {fileID: 4800000, guid: 1b9d011eb2a09a645baf29ad20901b3c, type: 3}
+    second:
+      variants:
+      - keywords:
+        passType: 0
+  - first: {fileID: 4800000, guid: 0922a00f64286e643959c69beeed9be7, type: 3}
+    second:
+      variants:
+      - keywords: OUTLINE_ON SOFTMASKABLE
+        passType: 0
