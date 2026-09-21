@@ -268,6 +268,7 @@ public class GrassCutter : MonoBehaviour
     {
         if (audioSource == null || cutAudioClips == null || cutAudioClips.Length == 0)
         {
+            Debug.Log("Con 1");
             return;
         }
 
@@ -275,6 +276,7 @@ public class GrassCutter : MonoBehaviour
 
         if (cutsSinceAudio < cutsPerAudioPlay || Time.time < nextAudioTime)
         {
+            Debug.Log("Con 2");
             return;
         }
 
@@ -283,6 +285,7 @@ public class GrassCutter : MonoBehaviour
 
         AudioClip clip = cutAudioClips[Random.Range(0, cutAudioClips.Length)];
         audioSource.pitch = 1f + Random.Range(-audioPitchVariation, audioPitchVariation);
+        Debug.Log("Audio Function");
         audioSource.PlayOneShot(clip, audioVolume);
     }
 
