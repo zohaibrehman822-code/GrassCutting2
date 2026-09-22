@@ -77,6 +77,13 @@ public class EnemyAI : MonoBehaviour
     public bool IsAlive => isAlive;
     public bool IsOutsideTerritory => outsideTerritory;
 
+    private EnemySpawner spawner;
+
+    public void SetSpawner(EnemySpawner enemySpawner)
+    {
+        spawner = enemySpawner;
+    }
+
     private void Awake()
     {
         movement = GetComponent<EnemyMovement>();
@@ -316,6 +323,7 @@ public class EnemyAI : MonoBehaviour
     }
 
     // Temporary version. Step 10 rewrites this properly.
+
     public void Die()
     {
         if (!isAlive) return;
@@ -328,8 +336,18 @@ public class EnemyAI : MonoBehaviour
             territoryManager.RemoveEnemy(this);
         }
 
+        if (spawner != null)
+        {
+            spawner.NotifyEnemyDied(gameObject);
+        }
+
         Debug.Log("Enemy Died");
-        gameObject.SetActive(false);
+        Destroy(gameObject);
+
+        if (territoryManager != null)
+        {
+            territoryManager.CheckWinCondition();
+        }
     }
 
     private void OnDrawGizmosSelected()

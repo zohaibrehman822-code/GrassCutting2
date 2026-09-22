@@ -15,6 +15,15 @@ public class EnemySpawner : MonoBehaviour
 
     private readonly List<GameObject> spawnedEnemies = new List<GameObject>();
 
+    public IReadOnlyList<GameObject> SpawnedEnemies => spawnedEnemies;
+
+    public int RemainingEnemyCount => spawnedEnemies.Count;
+
+    public void NotifyEnemyDied(GameObject enemy)
+    {
+        spawnedEnemies.Remove(enemy);
+    }
+
     private void Start()
     {
         SpawnAll();
@@ -36,6 +45,12 @@ public class EnemySpawner : MonoBehaviour
             );
 
             spawnedEnemies.Add(enemy);
+
+            EnemyAI enemyAI = enemy.GetComponent<EnemyAI>();
+            if (enemyAI != null)
+            {
+                enemyAI.SetSpawner(this);
+            }
         }
     }
 

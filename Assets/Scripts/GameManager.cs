@@ -20,8 +20,12 @@ public class GameManager : MonoBehaviour
 
     private LevelWinCondition currentWinCondition;
 
+    private PaperPlayerTerritory currentPlayerTerritory;
+
     public void StartLevel(int levelNumber)
     {
+        Time.timeScale = 1f;
+
         int index = levelNumber - 1;
 
         if (index < 0 || index >= levelPrefabs.Length || levelPrefabs[index] == null)
@@ -30,10 +34,15 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Unsubscribe from the previous level's manager, if any
+        // Unsubscribe from the previous level's manager and player, if any
         if (currentTerritoryManager != null)
         {
             currentTerritoryManager.OnWinningPercentageReached -= HandleWinningPercentageReached;
+        }
+
+        if (currentPlayerTerritory != null)
+        {
+            currentPlayerTerritory.OnPlayerDeath -= HandlePlayerDeath;
         }
 
         // Clean up the previously loaded level and player, if any
@@ -50,6 +59,7 @@ public class GameManager : MonoBehaviour
         }
 
         currentTerritoryManager = null;
+        currentPlayerTerritory = null;
         currentLevelNumber = levelNumber;
 
         // Instantiate Level at (0, 0, 0)
@@ -65,16 +75,22 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogError("GameManager: Instantiated level has no TerritoryManager.", currentLevelInstance);
         }
-        
-        // inside StartLevel(), right after you get territoryManager:
-    currentWinCondition = currentLevelInstance.GetComponentInChildren<LevelWinCondition>();
 
-        // Instantiate Player at (0, 0.586, 0)
+        currentWinCondition = currentLevelInstance.GetComponentInChildren<LevelWinCondition>();
+
+        // Instantiate Player at (0, 0.495, 0)
         currentPlayerInstance = Instantiate(
             playerPrefab,
             new Vector3(0f, 0.495f, 0f),
             Quaternion.identity
         );
+
+        currentPlayerTerritory = currentPlayerInstance.GetComponentInChildren<PaperPlayerTerritory>();
+
+        if (currentPlayerTerritory != null)
+        {
+            currentPlayerTerritory.OnPlayerDeath += HandlePlayerDeath;
+        }
 
         // Assign the newly spawned Player to the camera
         cameraFollow.SetTarget(currentPlayerInstance.transform);
@@ -114,5 +130,23 @@ public class GameManager : MonoBehaviour
         {
             currentTerritoryManager.OnWinningPercentageReached -= HandleWinningPercentageReached;
         }
+
+        if (currentPlayerTerritory != null)
+        {
+            currentPlayerTerritory.OnPlayerDeath -= HandlePlayerDeath;
+        }
+    }
+
+    private void HandlePlayerDeath()
+    {
+        if (uiManager != null)
+        {
+            uiManager.ActiveFailPanel();
+        }
+    }
+
+    public void RestartCurrentLevel()
+    {
+        StartLevel(currentLevelNumber);
     }
 }

@@ -56,6 +56,8 @@ public class TerritoryManager : MonoBehaviour
 
     //[SerializeField] private List<EnemyTerritoryRenderer> enemyTerritoryRenderers = new List<EnemyTerritoryRenderer>();
 
+    [SerializeField] private EnemySpawner enemySpawner;
+
     private static readonly Vector2Int[] Directions =
     {
         Vector2Int.right,
@@ -319,17 +321,45 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
-    private void CheckWinCondition()
+    public void CheckWinCondition()
     {
         if (hasWon || winCondition == null || TotalCells <= 0) return;
 
-        float currentPercentage = ownedCells.Count * 100f / TotalCells;
-
-        if (currentPercentage >= winCondition.WinningPercentage)
+        if (enemySpawner == null)
         {
-            hasWon = true;
-            OnWinningPercentageReached?.Invoke();
+            enemySpawner = FindFirstObjectByType<EnemySpawner>();
         }
+
+        // Condition 2: all opponents eliminated.
+        if (enemySpawner != null && enemySpawner.RemainingEnemyCount > 0)
+            return;
+
+        // Condition 1: required percentage captured.
+        float currentPercentage = ownedCells.Count * 100f / TotalCells;
+        if (currentPercentage < winCondition.WinningPercentage)
+            return;
+
+        // Condition 3: player territory bigger than every remaining opponent.
+        // (Guaranteed once Condition 2 holds, checked explicitly for safety.)
+        if (enemySpawner != null)
+        {
+            IReadOnlyList<GameObject> remaining = enemySpawner.SpawnedEnemies;
+
+            for (int i = 0; i < remaining.Count; i++)
+            {
+                if (remaining[i] == null) continue;
+
+                EnemyAI enemyAI = remaining[i].GetComponent<EnemyAI>();
+                if (enemyAI == null || !enemyAI.IsAlive) continue;
+
+                if (ownedCells.Count <= GetEnemyTerritoryCount(enemyAI))
+                    return;
+            }
+        }
+
+        hasWon = true;
+        Debug.Log("Level Won");
+        OnWinningPercentageReached?.Invoke();
     }
 
     private void SeedOutsideCells()
@@ -915,5 +945,13 @@ public class TerritoryManager : MonoBehaviour
                 renderer.RebuildAll(kvp.Value);
             }
         }
+    }
+
+    public int GetEnemyTerritoryCount(EnemyAI enemy)
+    {
+        if (enemy != null && enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> cells))
+            return cells.Count;
+
+        return 0;
     }
 }

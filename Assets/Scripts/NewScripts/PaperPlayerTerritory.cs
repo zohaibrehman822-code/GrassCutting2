@@ -63,6 +63,8 @@ public class PaperPlayerTerritory : MonoBehaviour
 
     private GrassCutter playerCutter;
 
+    public event System.Action OnPlayerDeath;
+
     private void Awake()
     {
         if (territoryManager == null)
@@ -143,13 +145,25 @@ public class PaperPlayerTerritory : MonoBehaviour
         }
 
         if (territoryManager.IsPlayerInsideEnemyTrail(
-            transform.position,
-            trailKillRadius,
-            out _))
+    transform.position,
+    trailKillRadius,
+    out EnemyAI killerEnemy))
         {
-            Debug.Log("Player Died - Player touched enemy trail");
-            OnPlayerDied();
-            return;
+            int enemyTerritoryCount = territoryManager.GetEnemyTerritoryCount(killerEnemy);
+            int playerTerritoryCount = territoryManager.OwnedCells.Count;
+
+            if (playerTerritoryCount > enemyTerritoryCount)
+            {
+                Debug.Log("Level Failed - Enemy Died (Player had bigger territory)");
+                killerEnemy.Die();
+            }
+            else if (enemyTerritoryCount > playerTerritoryCount)
+            {
+                Debug.Log("Level Failed - Player Died (Enemy had bigger territory)");
+                OnPlayerDied();
+                return;
+            }
+            // Equal territory: nothing happens, tell me if you want a rule for this case.
         }
 
         territoryManager.AddTrailPosition(
@@ -177,6 +191,8 @@ public class PaperPlayerTerritory : MonoBehaviour
 
         Time.timeScale = 0f;
         Debug.Log("Player Died - Game Over");
+
+        OnPlayerDeath?.Invoke();
     }
 
     private void LateUpdate()
