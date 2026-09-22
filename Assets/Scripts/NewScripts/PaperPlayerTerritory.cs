@@ -61,6 +61,8 @@ public class PaperPlayerTerritory : MonoBehaviour
     [Header("Trail Kill")]
     [SerializeField] private float trailKillRadius = 0.3f;
 
+    private GrassCutter playerCutter;
+
     private void Awake()
     {
         if (territoryManager == null)
@@ -90,6 +92,7 @@ public class PaperPlayerTerritory : MonoBehaviour
             trailRenderer.enabled = enableLineRenderer;
         }
         playerMovement = GetComponent<Movement>();
+        playerCutter = GetComponentInParent<GrassCutter>();
     }
 
     private void OnEnable()
@@ -183,6 +186,8 @@ public class PaperPlayerTerritory : MonoBehaviour
 
     private void OnGrassWasCut(Vector3 grassPosition)
     {
+        if (playerCutter != null && grassGrid.LastCutSource != playerCutter)
+            return;
         // Always remember the real cut position, even when
         // the cut-grass visual is switched off.
         cutGrassPositions.Add(grassPosition);

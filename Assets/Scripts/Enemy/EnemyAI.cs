@@ -1,24 +1,18 @@
 using UnityEngine;
 
-[RequireComponent(typeof(RotateObject))]
-[RequireComponent(typeof(GrassCutter))]
-[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(EnemyMovement))]
 public class EnemyAI : MonoBehaviour
 {
+    private enum State
+    {
+        Resting,
+        Expanding,
+        Returning
+    }
+
     [Header("References")]
+    [Tooltip("Leave empty to find it automatically.")]
     [SerializeField] private TerritoryManager territoryManager;
-
-    [Header("Movement")]
-    [SerializeField] private float moveSpeed = 5f;
-
-    [Header("Trail")]
-    [SerializeField] private float territoryTouchRadius = 0.15f;
-    [SerializeField] private float trailCollisionRadius = 0.3f;
-
-    [Header("AI")]
-    [SerializeField] private float wanderRadius = 6f;
-    [SerializeField] private float wanderInterval = 2f;
-    [SerializeField] private float expandChance = 0.4f;
 
     [Header("Starting Territory")]
     [Min(1)]
@@ -26,226 +20,352 @@ public class EnemyAI : MonoBehaviour
     [Min(1)]
     [SerializeField] private int startingHeight = 3;
 
-    private Rigidbody rb;
-    private RotateObject rotateObject;
-    private GrassCutter grassCutter;
+    [Header("Territory Check")]
+    [Min(0.01f)]
+    [SerializeField] private float territoryTouchRadius = 0.15f;
 
-    private bool outsideTerritory;
+    [Header("AI Timing")]
+    [Tooltip("The AI thinks this often, not every frame.")]
+    [Min(0.05f)]
+    [SerializeField] private float decisionInterval = 0.1f;
+
+    [Tooltip("Seconds the enemy stays home before leaving (random between X and Y).")]
+    [SerializeField] private Vector2 restTimeRange = new Vector2(1f, 3f);
+
+    [Min(0.1f)]
+    [SerializeField] private float restWanderRadius = 0.5f;
+
+    [Header("Expansion")]
+    [Tooltip("Distance of the first waypoint (random between X and Y).")]
+    [SerializeField] private Vector2 forwardDistanceRange = new Vector2(2.5f, 5f);
+
+    [Tooltip("Sideways distance of the second waypoint (random between X and Y).")]
+    [SerializeField] private Vector2 sideDistanceRange = new Vector2(2f, 4f);
+
+    [Tooltip("Safety: give up and return home after this many seconds outside.")]
+    [Min(1f)]
+    [SerializeField] private float maxExpandSeconds = 12f;
+
+    [Tooltip("Keeps waypoints away from the plane edge.")]
+    [Min(0f)]
+    [SerializeField] private float mapEdgeMargin = 0.75f;
+
+    [Header("Debug")]
+    [SerializeField] private bool logStateChanges;
+
+    private EnemyMovement movement;
+
+    [Tooltip("Leave empty to use the one on a child object.")]
+    [SerializeField] private PlayerTerritoryRenderer territoryRenderer;
+
+    private State state;
+    private bool setupDone;
     private bool isAlive = true;
-    private Vector3 wanderTarget;
-    private float nextWanderTime;
+    private bool outsideTerritory;
 
+    private bool wasOutside;
+
+    private Vector3 homePosition;
+    private Vector3 waypointA;
+    private Vector3 waypointB;
+    private int waypointIndex;
+
+    private float nextDecisionTime;
+    private float stateEndTime;
+
+    // TerritoryManager already reads these two.
     public bool IsAlive => isAlive;
     public bool IsOutsideTerritory => outsideTerritory;
 
     private void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        rotateObject = GetComponent<RotateObject>();
-        grassCutter = GetComponent<GrassCutter>();
-
-        rb.constraints =
-            RigidbodyConstraints.FreezePositionY |
-            RigidbodyConstraints.FreezeRotationX |
-            RigidbodyConstraints.FreezeRotationZ;
+        movement = GetComponent<EnemyMovement>();
 
         if (territoryManager == null)
+        {
             territoryManager = FindFirstObjectByType<TerritoryManager>();
+        }
+
+        if (territoryRenderer == null)
+        {
+            territoryRenderer = GetComponentInChildren<PlayerTerritoryRenderer>(true);
+        }
     }
 
     private void Start()
     {
-        if (territoryManager != null)
+        if (territoryManager == null)
         {
-            territoryManager.CreateEnemyStartingTerritory(
-                transform.position,
-                startingWidth,
-                startingHeight
-            );
-
-            territoryManager.RegisterEnemyHome(this);
+            Debug.LogError("EnemyAI: No TerritoryManager found.", this);
+            enabled = false;
+            return;
         }
 
-        nextWanderTime = Time.time + wanderInterval;
-        PickNewWanderTarget();
+        // The spawner can run before the manager is ready, so wait if needed.
+        if (territoryManager.IsInitialized)
+        {
+            Setup();
+        }
+        else
+        {
+            territoryManager.OnInitialized += HandleTerritoryInitialized;
+        }
     }
 
     private void OnDestroy()
     {
         if (territoryManager != null)
         {
+            territoryManager.OnInitialized -= HandleTerritoryInitialized;
             territoryManager.RemoveEnemy(this);
         }
     }
 
-    private void FixedUpdate()
+    private void HandleTerritoryInitialized(TerritoryManager manager)
     {
-        if (!isAlive || territoryManager == null) return;
+        territoryManager.OnInitialized -= HandleTerritoryInitialized;
+        Setup();
+    }
 
-        bool touchingTerritory = territoryManager.TouchesTerritory(
+    private void Setup()
+    {
+        if (setupDone) return;
+
+        homePosition = transform.position;
+
+        if (territoryRenderer != null)
+        {
+            territoryManager.RegisterEnemyRenderer(this, territoryRenderer);
+        }
+        else
+        {
+            Debug.LogWarning("EnemyAI: No PlayerTerritoryRenderer found. Enemy territory will be invisible.", this);
+        }
+
+        territoryManager.CreateEnemyStartingTerritory(
+            this,
             transform.position,
+            startingWidth,
+            startingHeight
+        );
+
+        territoryManager.RegisterEnemyHome(this);
+
+        setupDone = true;
+        EnterResting();
+    }
+
+    private void Update()
+    {
+        if (!isAlive || !setupDone) return;
+
+        if (Time.time < nextDecisionTime) return;
+        nextDecisionTime = Time.time + decisionInterval;
+
+        outsideTerritory = !territoryManager.EnemyTouchesTerritory(
+            this,
             territoryTouchRadius
         );
 
-        if (!outsideTerritory)
-        {
-            if (!touchingTerritory)
-            {
-                BeginTrail();
-            }
-            else
-            {
-                CheckPlayerTrailCollision();
-                AIWander();
-            }
-        }
-        else
-        {
-            territoryManager.AddEnemyTrailPosition(this, transform.position);
+        UpdateTrail();
 
-            if (touchingTerritory)
-            {
-                CompleteTrail();
-            }
-            else
-            {
-                CheckPlayerTrailCollision();
-                NavigateHome();
-            }
-        }
-
-        UpdateRotation();
-    }
-
-    private void CheckPlayerTrailCollision()
-    {
-        if (territoryManager.IsEnemyInsidePlayerTrail(this, trailCollisionRadius))
+        switch (state)
         {
-            Debug.Log("Enemy Died - Enemy touched player trail");
-            Die();
+            case State.Resting:
+                UpdateResting();
+                break;
+
+            case State.Expanding:
+                UpdateExpanding();
+                break;
+
+            case State.Returning:
+                UpdateReturning();
+                break;
         }
     }
 
-    private void AIWander()
+    // ---------------- Resting ----------------
+
+    private void EnterResting()
     {
-        if (Time.time >= nextWanderTime)
-        {
-            nextWanderTime = Time.time + wanderInterval;
-
-            if (Random.value < expandChance)
-            {
-                Vector3 awayFromHome = transform.position - territoryManager.GetEnemyHomePosition(this);
-                awayFromHome.y = 0f;
-
-                if (awayFromHome.sqrMagnitude < 0.1f)
-                {
-                    Vector3 random = Random.insideUnitSphere;
-                    random.y = 0f;
-                    awayFromHome = random;
-                }
-
-                Vector3 expandTarget = transform.position + awayFromHome.normalized * wanderRadius;
-                wanderTarget = ClampToMapBounds(expandTarget);
-            }
-            else
-            {
-                PickNewWanderTarget();
-            }
-        }
-
-        MoveToward(wanderTarget);
+        ChangeState(State.Resting);
+        stateEndTime = Time.time + Random.Range(restTimeRange.x, restTimeRange.y);
     }
 
-    private void NavigateHome()
+    private void UpdateResting()
     {
-        Vector3 homeCenter = territoryManager.GetEnemyHomePosition(this);
-        Vector3 toHome = homeCenter - transform.position;
-        toHome.y = 0f;
-
-        if (toHome.sqrMagnitude > 0.5f)
+        if (Time.time >= stateEndTime)
         {
-            MoveToward(homeCenter);
-        }
-        else
-        {
-            PickNewWanderTarget();
-            MoveToward(wanderTarget);
-        }
-    }
-
-    private void MoveToward(Vector3 target)
-    {
-        Vector3 direction = (target - transform.position);
-        direction.y = 0f;
-
-        if (direction.sqrMagnitude < 0.1f)
-        {
-            StopMovement();
+            BeginExpansion();
             return;
         }
 
-        Vector3 move = direction.normalized * moveSpeed;
-        rb.linearVelocity = new Vector3(move.x, 0f, move.z);
+        // Small wander around home so the enemy does not stand frozen.
+        if (movement.HasArrived)
+        {
+            Vector2 offset = Random.insideUnitCircle * restWanderRadius;
+            movement.SetDestination(homePosition + new Vector3(offset.x, 0f, offset.y));
+        }
     }
 
-    private void UpdateRotation()
+    // ---------------- Expanding ----------------
+
+    private void BeginExpansion()
     {
-        bool isMoving = rb.linearVelocity.sqrMagnitude > 0.1f;
-        rotateObject.SetMoving(isMoving);
+        Vector2 direction2D = Random.insideUnitCircle.normalized;
+        Vector3 forward = new Vector3(direction2D.x, 0f, direction2D.y);
+        Vector3 side = new Vector3(-forward.z, 0f, forward.x);
+
+        if (Random.value < 0.5f)
+        {
+            side = -side;
+        }
+
+        float forwardDistance = Random.Range(forwardDistanceRange.x, forwardDistanceRange.y);
+        float sideDistance = Random.Range(sideDistanceRange.x, sideDistanceRange.y);
+
+        waypointA = ClampToMap(transform.position + forward * forwardDistance);
+        waypointB = ClampToMap(waypointA + side * sideDistance);
+        waypointIndex = 0;
+
+        if (!movement.SetDestination(waypointA))
+        {
+            EnterResting();
+            return;
+        }
+
+        ChangeState(State.Expanding);
+        stateEndTime = Time.time + maxExpandSeconds;
     }
 
-    private void StopMovement()
+    private void UpdateExpanding()
     {
-        rb.linearVelocity = Vector3.zero;
-        rotateObject.SetMoving(false);
+        if (Time.time >= stateEndTime)
+        {
+            BeginReturning();
+            return;
+        }
+
+        if (!movement.HasArrived)
+            return;
+
+        if (waypointIndex == 0)
+        {
+            waypointIndex = 1;
+
+            if (!movement.SetDestination(waypointB))
+            {
+                BeginReturning();
+            }
+        }
+        else
+        {
+            BeginReturning();
+        }
     }
 
-    private void PickNewWanderTarget()
+    // ---------------- Returning ----------------
+
+    private void BeginReturning()
     {
-        Vector3 randomOffset = new Vector3(
-            Random.Range(-wanderRadius, wanderRadius),
-            0f,
-            Random.Range(-wanderRadius, wanderRadius)
-        );
-
-        wanderTarget = ClampToMapBounds(transform.position + randomOffset);
+        ChangeState(State.Returning);
+        movement.SetDestination(homePosition);
     }
 
-    private Vector3 ClampToMapBounds(Vector3 position)
+    private void UpdateReturning()
+    {
+        // Back inside territory: done.
+        if (!outsideTerritory)
+        {
+            EnterResting();
+            return;
+        }
+
+        // Ignored by EnemyMovement if the destination did not change.
+        movement.SetDestination(homePosition);
+    }
+
+    // ---------------- Helpers ----------------
+
+    private Vector3 ClampToMap(Vector3 position)
     {
         Renderer playArea = territoryManager.PlayArea;
-        if (playArea == null) return position;
+
+        if (playArea == null)
+            return position;
 
         Bounds bounds = playArea.bounds;
-        position.x = Mathf.Clamp(position.x, bounds.min.x + 0.5f, bounds.max.x - 0.5f);
-        position.z = Mathf.Clamp(position.z, bounds.min.z + 0.5f, bounds.max.z - 0.5f);
+
+        position.x = Mathf.Clamp(position.x, bounds.min.x + mapEdgeMargin, bounds.max.x - mapEdgeMargin);
+        position.z = Mathf.Clamp(position.z, bounds.min.z + mapEdgeMargin, bounds.max.z - mapEdgeMargin);
+
         return position;
     }
 
-    private void BeginTrail()
+    private void ChangeState(State newState)
     {
-        outsideTerritory = true;
-        territoryManager.StartEnemyTrail(this, transform.position);
+        if (state == newState) return;
+
+        state = newState;
+
+        if (logStateChanges)
+        {
+            Debug.Log($"{name}: {state}", this);
+        }
     }
 
-    private void CompleteTrail()
-    {
-        outsideTerritory = false;
-        territoryManager.CompleteEnemyTrail(this);
-    }
-
+    // Temporary version. Step 10 rewrites this properly.
     public void Die()
     {
         if (!isAlive) return;
 
         isAlive = false;
-        StopMovement();
-        rotateObject.StopRotation();
-        grassCutter.SetCutting(false);
+        movement.Stop();
 
         if (territoryManager != null)
+        {
             territoryManager.RemoveEnemy(this);
+        }
 
+        Debug.Log("Enemy Died");
         gameObject.SetActive(false);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!Application.isPlaying || !setupDone) return;
+
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(homePosition, 0.3f);
+
+        if (state == State.Expanding)
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(transform.position, waypointIndex == 0 ? waypointA : waypointB);
+            Gizmos.DrawWireSphere(waypointA, 0.2f);
+            Gizmos.DrawWireSphere(waypointB, 0.2f);
+        }
+    }
+
+    private void UpdateTrail()
+    {
+        if (outsideTerritory)
+        {
+            if (!wasOutside)
+            {
+                territoryManager.StartEnemyTrail(this, transform.position);
+            }
+            else
+            {
+                territoryManager.AddEnemyTrailPosition(this, transform.position);
+            }
+        }
+        else if (wasOutside)
+        {
+            territoryManager.CompleteEnemyTrail(this);
+        }
+
+        wasOutside = outsideTerritory;
     }
 }

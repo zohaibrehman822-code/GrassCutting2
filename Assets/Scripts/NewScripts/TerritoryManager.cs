@@ -39,6 +39,10 @@ public class TerritoryManager : MonoBehaviour
     private readonly Dictionary<EnemyAI, HashSet<Vector2Int>> enemyTrailCells = new Dictionary<EnemyAI, HashSet<Vector2Int>>();
     private readonly Dictionary<EnemyAI, Vector3> enemyHomePositions = new Dictionary<EnemyAI, Vector3>();
 
+    private readonly Dictionary<EnemyAI, HashSet<Vector2Int>> enemyTerritories = new Dictionary<EnemyAI, HashSet<Vector2Int>>();
+
+    private readonly Dictionary<EnemyAI, PlayerTerritoryRenderer> enemyRenderers = new Dictionary<EnemyAI, PlayerTerritoryRenderer>();
+
     public event System.Action<TerritoryManager> OnInitialized;
 
     [Header("Win Condition")]
@@ -47,6 +51,8 @@ public class TerritoryManager : MonoBehaviour
     public event System.Action OnWinningPercentageReached;
 
     private bool hasWon;
+
+    public bool IsInitialized => initialized;
 
     //[SerializeField] private List<EnemyTerritoryRenderer> enemyTerritoryRenderers = new List<EnemyTerritoryRenderer>();
 
@@ -93,6 +99,10 @@ public class TerritoryManager : MonoBehaviour
         enemyTrailCells.Clear();
         enemyHomePositions.Clear();
 
+        enemyTerritories.Clear();
+
+        enemyRenderers.Clear();
+
         initialized = true;
 
         CreateStartingTerritory();
@@ -106,6 +116,25 @@ public class TerritoryManager : MonoBehaviour
         territoryRenderer.Rebuild(ownedCells);
 
         OnInitialized?.Invoke(this);
+    }
+
+    public float CellSize => cellSize;
+
+    public void RegisterEnemyRenderer(EnemyAI enemy, PlayerTerritoryRenderer renderer)
+    {
+        if (!initialized || enemy == null || renderer == null) return;
+
+        renderer.Initialize(this, cellSize);
+        enemyRenderers[enemy] = renderer;
+    }
+
+    private void RefreshEnemyRenderer(EnemyAI enemy)
+    {
+        if (enemyRenderers.TryGetValue(enemy, out PlayerTerritoryRenderer renderer) &&
+            enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> cells))
+        {
+            renderer.Rebuild(cells);
+        }
     }
 
 
@@ -279,6 +308,11 @@ public class TerritoryManager : MonoBehaviour
             }
         }
 
+        if (newlyCapturedCells.Count > 0)
+        {
+            TakeCellsFromOthers(newlyCapturedCells, null);
+        }
+
         if (grassGrid != null && newlyCapturedCells.Count > 0)
         {
             grassGrid.CutCells(newlyCapturedCells);
@@ -325,19 +359,19 @@ public class TerritoryManager : MonoBehaviour
 
     // ──── Enemy Trail System ────
 
-    public void CreateEnemyStartingTerritory(Vector3 worldPosition, int width, int height)
+    public void CreateEnemyStartingTerritory(EnemyAI enemy, Vector3 worldPosition, int width, int height)
     {
-        if (!initialized) return;
+        if (!initialized || enemy == null) return;
+
+        if (!enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> territory))
+        {
+            territory = new HashSet<Vector2Int>();
+            enemyTerritories.Add(enemy, territory);
+        }
 
         Vector2Int center = WorldToCell(worldPosition);
         int halfWidth = width / 2;
         int halfHeight = height / 2;
-
-        Vector3 homePos = new Vector3(
-            (center.x + 0.5f) * cellSize,
-            playArea.bounds.max.y,
-            (center.y + 0.5f) * cellSize
-        );
 
         List<Vector2Int> cells = new List<Vector2Int>();
 
@@ -346,7 +380,8 @@ public class TerritoryManager : MonoBehaviour
             for (int z = -halfHeight; z <= halfHeight; z++)
             {
                 Vector2Int cell = new Vector2Int(center.x + x, center.y + z);
-                if (IsInsideBounds(cell) && ownedCells.Add(cell))
+
+                if (IsInsideBounds(cell) && !IsCellClaimed(cell) && territory.Add(cell))
                 {
                     cells.Add(cell);
                 }
@@ -356,11 +391,6 @@ public class TerritoryManager : MonoBehaviour
         if (grassGrid != null && cells.Count > 0)
         {
             grassGrid.CutCells(cells);
-        }
-
-        if (territoryRenderer != null)
-        {
-            territoryRenderer.Rebuild(ownedCells);
         }
     }
 
@@ -386,164 +416,186 @@ public class TerritoryManager : MonoBehaviour
     {
         if (!initialized || enemy == null) return false;
 
-        return TouchesTerritory(enemy.transform.position, radius);
+        if (!enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> cells))
+            return false;
+
+        return TouchesCells(cells, enemy.transform.position, radius);
     }
 
     public void StartEnemyTrail(EnemyAI enemy, Vector3 worldPosition)
     {
         if (!initialized || enemy == null) return;
 
-        var trail = new List<Vector2Int>();
-        var trailCellsSet = new HashSet<Vector2Int>();
-
-        enemyTrails[enemy] = trail;
-        enemyTrailCells[enemy] = trailCellsSet;
-
-        Vector2Int cell = WorldToCell(worldPosition);
-        if (IsInsideBounds(cell))
+        if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail))
         {
-            trail.Add(cell);
-            trailCellsSet.Add(cell);
+            trail = new List<Vector2Int>(64);
+            enemyTrails[enemy] = trail;
         }
+        else
+        {
+            trail.Clear();
+        }
+
+        if (!enemyTrailCells.TryGetValue(enemy, out HashSet<Vector2Int> cells))
+        {
+            cells = new HashSet<Vector2Int>();
+            enemyTrailCells[enemy] = cells;
+        }
+        else
+        {
+            cells.Clear();
+        }
+
+        AddEnemyTrailCell(enemy, WorldToCell(worldPosition));
+    }
+
+    private void AddEnemyTrailCell(EnemyAI enemy, Vector2Int cell)
+    {
+        if (!IsInsideBounds(cell)) return;
+
+        // Never put trail on the enemy's own land.
+        if (enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> territory) &&
+            territory.Contains(cell))
+            return;
+
+        if (!enemyTrailCells.TryGetValue(enemy, out HashSet<Vector2Int> cells) || !cells.Add(cell))
+            return;
+
+        enemyTrails[enemy].Add(cell);
     }
 
     public void AddEnemyTrailPosition(EnemyAI enemy, Vector3 worldPosition)
     {
         if (!initialized || enemy == null) return;
 
-        if (!enemyTrails.TryGetValue(enemy, out var trail)) return;
-        if (!enemyTrailCells.TryGetValue(enemy, out var trailCellsSet)) return;
+        if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail) || trail.Count == 0)
+            return;
 
-        Vector2Int destination = WorldToCell(worldPosition);
-        Vector2Int previous = trail.Count > 0 ? trail[trail.Count - 1] : destination;
+        Vector2Int from = trail[trail.Count - 1];
+        Vector2Int to = WorldToCell(worldPosition);
 
-        int steps = Mathf.Max(
-            Mathf.Abs(destination.x - previous.x),
-            Mathf.Abs(destination.y - previous.y)
-        );
+        int differenceX = to.x - from.x;
+        int differenceZ = to.y - from.y;
+        int steps = Mathf.Max(Mathf.Abs(differenceX), Mathf.Abs(differenceZ));
 
         if (steps == 0) return;
+
+        Vector2Int previous = from;
 
         for (int step = 1; step <= steps; step++)
         {
             Vector2Int next = new Vector2Int(
-                previous.x + Mathf.RoundToInt((destination.x - previous.x) * (step / (float)steps)),
-                previous.y + Mathf.RoundToInt((destination.y - previous.y) * (step / (float)steps))
+                from.x + Mathf.RoundToInt(differenceX * (step / (float)steps)),
+                from.y + Mathf.RoundToInt(differenceZ * (step / (float)steps))
             );
 
-            if (!trailCellsSet.Contains(next) && IsInsideBounds(next))
+            if (next.x != previous.x && next.y != previous.y)
             {
-                trail.Add(next);
-                trailCellsSet.Add(next);
+                AddEnemyTrailCell(enemy, new Vector2Int(next.x, previous.y));
             }
+
+            AddEnemyTrailCell(enemy, next);
+            previous = next;
         }
     }
 
     public void CompleteEnemyTrail(EnemyAI enemy)
     {
-        if (enemy == null) return;
+        if (!initialized || enemy == null) return;
 
-        if (enemyTrails.TryGetValue(enemy, out var trail))
+        if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail) || trail.Count == 0)
+            return;
+
+        HashSet<Vector2Int> trailSet = enemyTrailCells[enemy];
+
+        int captured = CaptureEnemyEnclosedArea(enemy, trail, trailSet);
+
+        // Clear (not remove) so the lists are reused next time.
+        trail.Clear();
+        trailSet.Clear();
+
+        if (captured > 0)
         {
-            if (trail.Count > 0)
-            {
-                CaptureEnemyEnclosedArea(trail, enemyTrailCells[enemy]);
-            }
+            Debug.Log($"Area Captured by Enemy - {enemy.name} ({captured} cells)");
         }
-
-        enemyTrails.Remove(enemy);
-        enemyTrailCells.Remove(enemy);
     }
 
-    private void CaptureEnemyEnclosedArea(
-        List<Vector2Int> enemyTrail,
-        HashSet<Vector2Int> enemyTrailCellsSet)
+    private int CaptureEnemyEnclosedArea(
+    EnemyAI enemy,
+    List<Vector2Int> enemyTrail,
+    HashSet<Vector2Int> enemyTrailCellsSet)
     {
-        HashSet<Vector2Int> previousTerritory = new HashSet<Vector2Int>(ownedCells);
+        if (!enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> territory))
+            return 0;
 
-        HashSet<Vector2Int> localBlocked = new HashSet<Vector2Int>(previousTerritory);
-        foreach (Vector2Int cell in enemyTrail)
+        // Only the enemy's OWN land and trail act as walls.
+        // Player land and other enemies' land count as open ground.
+        blocked.Clear();
+        blocked.UnionWith(territory);
+        blocked.UnionWith(enemyTrailCellsSet);
+
+        outside.Clear();
+        captureQueue.Clear();
+        newlyCapturedCells.Clear();
+
+        SeedOutsideCells();
+
+        while (captureQueue.Count > 0)
         {
-            localBlocked.Add(cell);
-        }
-
-        HashSet<Vector2Int> localOutside = new HashSet<Vector2Int>();
-        Queue<Vector2Int> localQueue = new Queue<Vector2Int>();
-
-        for (int x = minCell.x; x <= maxCell.x; x++)
-        {
-            AddOutsideCellToSet(new Vector2Int(x, minCell.y), localBlocked, localOutside, localQueue);
-            AddOutsideCellToSet(new Vector2Int(x, maxCell.y), localBlocked, localOutside, localQueue);
-        }
-
-        for (int z = minCell.y; z <= maxCell.y; z++)
-        {
-            AddOutsideCellToSet(new Vector2Int(minCell.x, z), localBlocked, localOutside, localQueue);
-            AddOutsideCellToSet(new Vector2Int(maxCell.x, z), localBlocked, localOutside, localQueue);
-        }
-
-        while (localQueue.Count > 0)
-        {
-            Vector2Int current = localQueue.Dequeue();
+            Vector2Int current = captureQueue.Dequeue();
 
             for (int i = 0; i < Directions.Length; i++)
             {
                 Vector2Int next = current + Directions[i];
 
-                if (!IsInsideBounds(next) || localBlocked.Contains(next) || !localOutside.Add(next))
+                if (!IsInsideBounds(next) || blocked.Contains(next) || !outside.Add(next))
                     continue;
 
-                localQueue.Enqueue(next);
+                captureQueue.Enqueue(next);
             }
         }
 
-        newlyCapturedCells.Clear();
-
+        // Everything the flood fill could not reach is enclosed.
         for (int x = minCell.x; x <= maxCell.x; x++)
         {
             for (int z = minCell.y; z <= maxCell.y; z++)
             {
                 Vector2Int cell = new Vector2Int(x, z);
 
-                if (previousTerritory.Contains(cell) ||
-                    enemyTrailCellsSet.Contains(cell) ||
-                    localOutside.Contains(cell))
-                {
+                if (blocked.Contains(cell) || outside.Contains(cell))
                     continue;
-                }
 
-                if (ownedCells.Add(cell))
-                {
-                    newlyCapturedCells.Add(cell);
-                }
-            }
-        }
-
-        foreach (Vector2Int cell in enemyTrail)
-        {
-            if (ownedCells.Add(cell))
-            {
                 newlyCapturedCells.Add(cell);
             }
         }
 
-        if (grassGrid != null && newlyCapturedCells.Count > 0)
+        // The trail itself becomes territory.
+        for (int i = 0; i < enemyTrail.Count; i++)
         {
-            grassGrid.CutCells(newlyCapturedCells);
+            newlyCapturedCells.Add(enemyTrail[i]);
         }
 
-        //foreach (var renderer in enemyTerritoryRenderers)
-        //{
-        //    if (renderer != null)
-        //        renderer.Rebuild(newlyCapturedCells);
-        //}
+        int capturedCount = newlyCapturedCells.Count;
 
-        if (territoryRenderer != null)
+        if (capturedCount > 0)
         {
-            territoryRenderer.Rebuild(ownedCells);
+            TakeCellsFromOthers(newlyCapturedCells, enemy);
+
+            for (int i = 0; i < newlyCapturedCells.Count; i++)
+            {
+                territory.Add(newlyCapturedCells[i]);
+            }
+
+            if (grassGrid != null)
+            {
+                grassGrid.CutCells(newlyCapturedCells);
+            }
+
+            RefreshEnemyRenderer(enemy);
         }
 
         newlyCapturedCells.Clear();
+        return capturedCount;
     }
 
     private void AddOutsideCellToSet(
@@ -748,7 +800,25 @@ public class TerritoryManager : MonoBehaviour
 
     public bool TouchesTerritory(Vector3 worldPosition, float radius)
     {
-        if (!initialized) return false;
+        return TouchesCells(ownedCells, worldPosition, radius);
+    }
+
+    //public void RegisterEnemyTerritoryRenderer(EnemyTerritoryRenderer renderer)
+    //{
+    //    if (!enemyTerritoryRenderers.Contains(renderer))
+    //        enemyTerritoryRenderers.Add(renderer);
+    //}
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!drawDebugGrid || playArea == null) return;
+
+        Gizmos.DrawWireCube(playArea.bounds.center, playArea.bounds.size);
+    }
+
+    private bool TouchesCells(HashSet<Vector2Int> cells, Vector3 worldPosition, float radius)
+    {
+        if (!initialized || cells == null || cells.Count == 0) return false;
 
         radius = Mathf.Max(0f, radius);
         float radiusSqr = radius * radius;
@@ -762,9 +832,7 @@ public class TerritoryManager : MonoBehaviour
         {
             for (int z = minimumZ; z <= maximumZ; z++)
             {
-                Vector2Int cell = new Vector2Int(x, z);
-
-                if (!ownedCells.Contains(cell))
+                if (!cells.Contains(new Vector2Int(x, z)))
                     continue;
 
                 float cellMinimumX = x * cellSize;
@@ -784,16 +852,68 @@ public class TerritoryManager : MonoBehaviour
         return false;
     }
 
-    //public void RegisterEnemyTerritoryRenderer(EnemyTerritoryRenderer renderer)
-    //{
-    //    if (!enemyTerritoryRenderers.Contains(renderer))
-    //        enemyTerritoryRenderers.Add(renderer);
-    //}
-
-    private void OnDrawGizmosSelected()
+    private bool IsCellClaimed(Vector2Int cell)
     {
-        if (!drawDebugGrid || playArea == null) return;
+        if (ownedCells.Contains(cell)) return true;
 
-        Gizmos.DrawWireCube(playArea.bounds.center, playArea.bounds.size);
+        foreach (var kvp in enemyTerritories)
+        {
+            if (kvp.Value.Contains(cell)) return true;
+        }
+
+        return false;
+    }
+
+    private void TakeCellsFromOthers(List<Vector2Int> cells, EnemyAI capturer)
+    {
+        // Enemy captured: the player may lose cells.
+        if (capturer != null)
+        {
+            bool playerLost = false;
+
+            for (int i = 0; i < cells.Count; i++)
+            {
+                if (ownedCells.Remove(cells[i]))
+                {
+                    playerLost = true;
+                }
+            }
+
+            if (playerLost)
+            {
+                Debug.Log("Territory taken from Player");
+
+                if (territoryRenderer != null)
+                {
+                    territoryRenderer.RebuildAll(ownedCells);
+                }
+            }
+        }
+
+        // Other enemies may lose cells too.
+        foreach (var kvp in enemyTerritories)
+        {
+            if (kvp.Key == capturer) continue;
+
+            bool lost = false;
+
+            for (int i = 0; i < cells.Count; i++)
+            {
+                if (kvp.Value.Remove(cells[i]))
+                {
+                    lost = true;
+                }
+            }
+
+            if (!lost) continue;
+
+            Debug.Log($"Territory taken from {(kvp.Key != null ? kvp.Key.name : "dead enemy")}");
+
+            if (enemyRenderers.TryGetValue(kvp.Key, out PlayerTerritoryRenderer renderer) &&
+                renderer != null)
+            {
+                renderer.RebuildAll(kvp.Value);
+            }
+        }
     }
 }

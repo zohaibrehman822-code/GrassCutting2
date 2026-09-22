@@ -3380,6 +3380,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1232850980}
   m_CullTransparentMesh: 1
+--- !u!1 &1285186244
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1285186245}
+  m_Layer: 0
+  m_Name: EnemyFunctionalityBranch
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1285186245
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1285186244}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -3.42794, y: 0.44113, z: -4.80323}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1291902507
 GameObject:
   m_ObjectHideFlags: 0
@@ -3576,9 +3607,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   playerPrefab: {fileID: 3733851999030853658, guid: fe02ad926a7106f4aaf157b3098f5a8b, type: 3}
   levelPrefabs:
+  - {fileID: 5648904850929767513, guid: b2f74913519a3c34cbeb4c79ff1a1537, type: 3}
   - {fileID: 6503524754848985428, guid: 08a4700d1bc1e4d47bba4d1c6f929c97, type: 3}
-  - {fileID: 6503524754848985428, guid: b2f74913519a3c34cbeb4c79ff1a1537, type: 3}
-  - {fileID: 6503524754848985428, guid: 69b328b7b2b6df448aee1ff3329383e9, type: 3}
   cameraFollow: {fileID: 330585548}
   territoryPercentage: {fileID: 1059337040}
   uiManager: {fileID: 632942365}
@@ -5357,3 +5387,4 @@ SceneRoots:
   - {fileID: 632942366}
   - {fileID: 1490069949}
   - {fileID: 1432300251}
+  - {fileID: 1285186245}

@@ -876,4 +876,19 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         nextGrowthUpdateTime = 0f;
         growthEndTime = 0f;
     }
+
+    /// <summary>
+    /// Redraws all grass from scratch for the given cells, without animation.
+    /// Used when this owner loses cells to someone else.
+    /// </summary>
+    public void RebuildAll(IReadOnlyCollection<Vector2Int> cells)
+    {
+        bool previousAnimateStart = animateStartingTerritory;
+        animateStartingTerritory = false;
+
+        Clear();
+        Rebuild(cells);
+
+        animateStartingTerritory = previousAnimateStart;
+    }
 }

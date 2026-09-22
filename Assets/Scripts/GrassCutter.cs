@@ -180,11 +180,15 @@ public class GrassCutter : MonoBehaviour
                 );
         }
 
-        grassGrid.Cut(cutPosition, effectiveRadius);
+        grassGrid.Cut(cutPosition, effectiveRadius, this);
     }
 
     private void OnGrassWasCut(Vector3 grassPosition)
     {
+        if (grassGrid != null && grassGrid.LastCutSource != this)
+            return;
+
+
         if (!cuttingEnabled)
         {
             return;

@@ -23,6 +23,8 @@ public class GrassCutGrid : MonoBehaviour
 
     public event Action<Vector3> GrassWasCut;
 
+    public Component LastCutSource { get; private set; }
+
     private int builtVersion = -1;
 
     /// <summary>
@@ -122,17 +124,24 @@ public class GrassCutGrid : MonoBehaviour
     /// This is used while the player is walking outside territory.
     /// </summary>
     /// 
+
     public int Cut(
     Vector3 worldPosition,
-    float radius)
+    float radius,
+    Component source = null)
     {
+        LastCutSource = source;
+
         Vector3 unusedEffectPosition;
-        return Cut(
+        int cutCount = Cut(
             worldPosition,
             radius,
             worldPosition,
             out unusedEffectPosition
         );
+
+        LastCutSource = null;
+        return cutCount;
     }
 
     /// <summary>

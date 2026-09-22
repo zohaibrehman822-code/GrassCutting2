@@ -115,6 +115,4 @@ public class GameManager : MonoBehaviour
             currentTerritoryManager.OnWinningPercentageReached -= HandleWinningPercentageReached;
         }
     }
-
-
 }

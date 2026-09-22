@@ -8,7 +8,7 @@ public class RotateObject : MonoBehaviour
     [SerializeField] private float speedChangeRate = 100f;
 
     private float currentRotationSpeed;
-    private bool isRotating = true;
+    [SerializeField] private bool isRotating = true;
     private bool isMoving;
 
     private void Awake()
