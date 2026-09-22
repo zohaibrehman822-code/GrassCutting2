@@ -54,9 +54,23 @@ public class TerritoryManager : MonoBehaviour
 
     public bool IsInitialized => initialized;
 
+
+
     //[SerializeField] private List<EnemyTerritoryRenderer> enemyTerritoryRenderers = new List<EnemyTerritoryRenderer>();
 
     [SerializeField] private EnemySpawner enemySpawner;
+
+    public EnemySpawner EnemySpawner
+    {
+        get
+        {
+            if (enemySpawner == null)
+            {
+                enemySpawner = FindFirstObjectByType<EnemySpawner>();
+            }
+            return enemySpawner;
+        }
+    }
 
     private static readonly Vector2Int[] Directions =
     {
