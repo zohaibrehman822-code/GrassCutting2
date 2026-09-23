@@ -159,19 +159,21 @@ public class CameraFollow : MonoBehaviour
         transform.position =
             target.position + offset;
 
-        smoothedLookPoint =
-            target.position + lookOffset;
+        //smoothedLookPoint =
+        //    target.position + lookOffset;
 
-        Vector3 lookDirection =
-            smoothedLookPoint - transform.position;
+        //Vector3 lookDirection =
+        //    smoothedLookPoint - transform.position;
 
-        if (lookDirection.sqrMagnitude > 0.0001f)
-        {
-            transform.rotation =
-                Quaternion.LookRotation(
-                    lookDirection,
-                    Vector3.up
-                );
-        }
+        //if (lookDirection.sqrMagnitude > 0.0001f)
+        //{
+        //    transform.rotation =
+        //        Quaternion.LookRotation(
+        //            lookDirection,
+        //            Vector3.up
+        //        );
+        //}
+
+        transform.localEulerAngles = new Vector3(53.1f, 0, 0);
     }
 }

@@ -4,102 +4,102 @@ using DG.Tweening;
 
 public class GrassCollectUI : MonoBehaviour
 {
-    public static GrassCollectUI Instance { get; private set; }
+    //public static GrassCollectUI Instance { get; private set; }
 
-    [Header("References")]
-    [SerializeField] private Canvas canvas;
-    [SerializeField] private RectTransform bucketTarget;
+    //[Header("References")]
+    //[SerializeField] private Canvas canvas;
+    //[SerializeField] private RectTransform bucketTarget;
 
-    [Tooltip("Prefab containing ONLY the flying grass Image.")]
-    [SerializeField] private RectTransform grassIconPrefab;
+    //[Tooltip("Prefab containing ONLY the flying grass Image.")]
+    //[SerializeField] private RectTransform grassIconPrefab;
 
-    [Header("Animation")]
-    [SerializeField] private float animationDuration = 0.5f;
-    [SerializeField] private float startScale = 0.8f;
-    [SerializeField] private float endScale = 0.25f;
+    //[Header("Animation")]
+    //[SerializeField] private float animationDuration = 0.5f;
+    //[SerializeField] private float startScale = 0.8f;
+    //[SerializeField] private float endScale = 0.25f;
 
-    public Ease easeEffect;
+    //public Ease easeEffect;
 
-    private Camera mainCamera;
+    //private Camera mainCamera;
 
-    private void Awake()
-    {
-        Instance = this;
-        mainCamera = Camera.main;
-    }
+    //private void Awake()
+    //{
+    //    Instance = this;
+    //    mainCamera = Camera.main;
+    //}
 
-    public void ShowGrassCollected(Vector3 worldPosition)
-    {
-        if (canvas == null ||
-            bucketTarget == null ||
-            grassIconPrefab == null)
-        {
-            return;
-        }
+    //public void ShowGrassCollected(Vector3 worldPosition)
+    //{
+    //    if (canvas == null ||
+    //        bucketTarget == null ||
+    //        grassIconPrefab == null)
+    //    {
+    //        return;
+    //    }
 
-        if (mainCamera == null)
-        {
-            mainCamera = Camera.main;
-        }
+    //    if (mainCamera == null)
+    //    {
+    //        mainCamera = Camera.main;
+    //    }
 
-        // Convert 3D grass position to screen position.
-        Vector3 screenPosition =
-            mainCamera.WorldToScreenPoint(worldPosition);
+    //    // Convert 3D grass position to screen position.
+    //    Vector3 screenPosition =
+    //        mainCamera.WorldToScreenPoint(worldPosition);
 
-        // Grass is behind the camera.
-        if (screenPosition.z <= 0f)
-        {
-            return;
-        }
+    //    // Grass is behind the camera.
+    //    if (screenPosition.z <= 0f)
+    //    {
+    //        return;
+    //    }
 
-        // Create the icon ONLY when grass is collected.
-        RectTransform icon =
-            Instantiate(grassIconPrefab, canvas.transform);
+    //    // Create the icon ONLY when grass is collected.
+    //    RectTransform icon =
+    //        Instantiate(grassIconPrefab, canvas.transform);
 
-        // Make sure it is visible above the other UI.
-        icon.SetAsLastSibling();
+    //    // Make sure it is visible above the other UI.
+    //    icon.SetAsLastSibling();
 
-        // Put it at the grass position.
-        icon.position = screenPosition;
+    //    // Put it at the grass position.
+    //    icon.position = screenPosition;
 
-        // Starting size.
-        icon.localScale =
-            Vector3.one * startScale;
+    //    // Starting size.
+    //    icon.localScale =
+    //        Vector3.one * startScale;
 
-        // Make sure any previous tweens are gone.
-        icon.DOKill();
+    //    // Make sure any previous tweens are gone.
+    //    icon.DOKill();
 
-        Sequence sequence = DOTween.Sequence();
+    //    Sequence sequence = DOTween.Sequence();
 
-        // Fly toward bucket.
-        sequence.Join(
-            icon.DOMove(
-                bucketTarget.position,
-                animationDuration
-            )
-            .SetEase(easeEffect)
-        );
+    //    // Fly toward bucket.
+    //    sequence.Join(
+    //        icon.DOMove(
+    //            bucketTarget.position,
+    //            animationDuration
+    //        )
+    //        .SetEase(easeEffect)
+    //    );
 
-        // Shrink while flying.
-        sequence.Join(
-            icon.DOScale(
-                Vector3.one * endScale,
-                animationDuration
-            )
-            .SetEase(easeEffect)
-        );
+    //    // Shrink while flying.
+    //    sequence.Join(
+    //        icon.DOScale(
+    //            Vector3.one * endScale,
+    //            animationDuration
+    //        )
+    //        .SetEase(easeEffect)
+    //    );
 
-        sequence.OnComplete(() =>
-        {
-            Destroy(icon.gameObject);
-        });
-    }
+    //    sequence.OnComplete(() =>
+    //    {
+    //        Destroy(icon.gameObject);
+    //    });
+    //}
 
-    private void OnDestroy()
-    {
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-    }
+    //private void OnDestroy()
+    //{
+    //    if (Instance == this)
+    //    {
+    //        Instance = null;
+    //    }
+    //}
 }

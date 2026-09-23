@@ -175,14 +175,10 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         pendingCutPositions = null;
     }
 
-    public void Rebuild(
+
+public void Rebuild(
     IReadOnlyCollection<Vector2Int> cells)
     {
-        IReadOnlyList<Vector3> cutPositions =
-            pendingCutPositions;
-
-        pendingCutPositions = null;
-
         if (territoryManager == null ||
             grassMesh == null ||
             grassMaterial == null ||
@@ -191,7 +187,8 @@ public class PlayerTerritoryRenderer : MonoBehaviour
             return;
         }
 
-        // Finish any previous growth before starting a new capture.
+        // Finish any previous growth before starting
+        // a new territory update.
         FinishGrowth();
 
         bool shouldAnimate =
@@ -205,6 +202,12 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         int firstNewMatrix =
             matrices.Count;
 
+        // IMPORTANT:
+        // Grass is generated ONLY from logically owned cells.
+        //
+        // Do not use physical cut positions here.
+        // Cut positions can extend beyond the logical grid
+        // cell and were causing a small visual grass fringe.
         foreach (Vector2Int cell in cells)
         {
             if (!renderedCells.Add(cell))
@@ -219,15 +222,6 @@ public class PlayerTerritoryRenderer : MonoBehaviour
             );
         }
 
-        if (cutPositions != null)
-        {
-            AddCutFringeGrass(
-                cutPositions,
-                shouldAnimate,
-                animationStartTime
-            );
-        }
-
         if (matrices.Count ==
             firstNewMatrix)
         {
@@ -235,7 +229,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
             return;
         }
 
-        // Append only new blades to GPU batches.
+        // Append only newly created blades to GPU batches.
         BuildBatches(firstNewMatrix);
 
         if (shouldAnimate &&

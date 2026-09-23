@@ -257,6 +257,7 @@ MonoBehaviour:
   minimumRotationSpeed: 533.3333
   maximumRotationSpeed: 933.3333
   speedChangeRate: 400
+  isRotating: 1
 --- !u!54 &2517503960854299141
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -360,13 +361,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   grassGrid: {fileID: 0}
-  cutRadius: 0.125
+  cutRadius: 0.19
   cutInterval: 0.05
   includeColliderSize: 1
   cuttingEnabled: 1
   cutParticlePrefab: {fileID: 3895100406977161009, guid: 67b3087cca8c2b8419b0673448567bd3, type: 3}
   particlePoolSize: 25
-  particleOffset: {x: 0, y: 0.6, z: 0}
+  particleOffset: {x: 0, y: 0.3, z: 0}
   minimumForwardDistance: 0.31
   forwardCone: 0.6
   cutsPerFastParticle: 3

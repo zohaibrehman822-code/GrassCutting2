@@ -368,8 +368,6 @@ MonoBehaviour:
   enemies:
   - enemyPrefab: {fileID: 6727800360134342348, guid: 97713076fd480de4db3cbc54dd5a6d72, type: 3}
     spawnPoint: {fileID: 7933375428778650063}
-  - enemyPrefab: {fileID: 6727800360134342348, guid: 97713076fd480de4db3cbc54dd5a6d72, type: 3}
-    spawnPoint: {fileID: 4765565033551671036}
 --- !u!1 &6668847672360583898
 GameObject:
   m_ObjectHideFlags: 0
@@ -447,7 +445,7 @@ MonoBehaviour:
   randomSeed: 6789
   animateCapturedGrass: 1
   animateStartingTerritory: 0
-  growthDuration: 1
+  growthDuration: 2
   growthStagger: 0.15
   growthUpdateInterval: 0.1
   growthCurve:

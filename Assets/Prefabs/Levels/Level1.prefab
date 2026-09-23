@@ -309,6 +309,7 @@ MonoBehaviour:
   startingHeight: 5
   drawDebugGrid: 0
   winCondition: {fileID: 0}
+  enemySpawner: {fileID: 0}
 --- !u!114 &7469032744577546728
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -331,7 +332,7 @@ MonoBehaviour:
   randomSeed: 6789
   animateCapturedGrass: 1
   animateStartingTerritory: 0
-  growthDuration: 1
+  growthDuration: 0.5
   growthStagger: 0.15
   growthUpdateInterval: 0.1
   growthCurve:
@@ -372,5 +373,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d71501af4b0907449ed9064be386158, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelWinCondition
-  winningPercentage: 70
+  winningPercentage: 30
   coinReward: 40

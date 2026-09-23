@@ -233,31 +233,37 @@ public class TerritoryManager : MonoBehaviour
         trail.Add(cell);
     }
 
-    public void CompleteTrail(IReadOnlyList<Vector3> cutPositions)
+    public void CompleteTrail(IReadOnlyList<Vector3> _)
     {
-        if (trail.Count == 0) return;
+        if (trail.Count == 0)
+        {
+            return;
+        }
 
-        CaptureEnclosedArea(cutPositions);
+        CaptureEnclosedArea();
 
         trail.Clear();
         trailCells.Clear();
 
         if (territoryRenderer != null)
         {
-            territoryRenderer.SetCutPositionsForNextCapture(cutPositions);
+            // Render only logically captured grid cells.
+            // Do not add grass using the wider cutter positions.
             territoryRenderer.Rebuild(ownedCells);
         }
 
         CheckWinCondition();
     }
 
-    private void CaptureEnclosedArea(IReadOnlyList<Vector3> cutPositions)
+    private void CaptureEnclosedArea()
     {
-        HashSet<Vector2Int> previousTerritory = new HashSet<Vector2Int>(ownedCells);
+        HashSet<Vector2Int> previousTerritory =
+            new HashSet<Vector2Int>(ownedCells);
 
         blocked.Clear();
         blocked.UnionWith(previousTerritory);
 
+        // The player's actual grid trail forms the capture boundary.
         foreach (Vector2Int cell in trail)
         {
             blocked.Add(cell);
@@ -277,13 +283,19 @@ public class TerritoryManager : MonoBehaviour
             {
                 Vector2Int next = current + Directions[i];
 
-                if (!IsInsideBounds(next) || blocked.Contains(next) || !outside.Add(next))
+                if (!IsInsideBounds(next) ||
+                    blocked.Contains(next) ||
+                    !outside.Add(next))
+                {
                     continue;
+                }
 
                 captureQueue.Enqueue(next);
             }
         }
 
+        // Capture only cells enclosed by the previous territory
+        // and the player's logical trail.
         for (int x = minCell.x; x <= maxCell.x; x++)
         {
             for (int z = minCell.y; z <= maxCell.y; z++)
@@ -304,6 +316,7 @@ public class TerritoryManager : MonoBehaviour
             }
         }
 
+        // The trail itself becomes territory.
         foreach (Vector2Int cell in trail)
         {
             if (ownedCells.Add(cell))
@@ -312,24 +325,13 @@ public class TerritoryManager : MonoBehaviour
             }
         }
 
-        if (cutPositions != null)
-        {
-            for (int i = 0; i < cutPositions.Count; i++)
-            {
-                Vector2Int cell = WorldToCell(cutPositions[i]);
-                if (IsInsideBounds(cell) && ownedCells.Add(cell))
-                {
-                    newlyCapturedCells.Add(cell);
-                }
-            }
-        }
-
         if (newlyCapturedCells.Count > 0)
         {
             TakeCellsFromOthers(newlyCapturedCells, null);
         }
 
-        if (grassGrid != null && newlyCapturedCells.Count > 0)
+        if (grassGrid != null &&
+            newlyCapturedCells.Count > 0)
         {
             grassGrid.CutCells(newlyCapturedCells);
         }

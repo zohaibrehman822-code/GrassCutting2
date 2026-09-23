@@ -151,8 +151,7 @@ public class GrassCutter : MonoBehaviour
             return;
         }
 
-        nextCutTime =
-            Time.time + cutInterval;
+        nextCutTime = Time.time + cutInterval;
 
         Vector3 cutPosition =
             bladeCollider != null
@@ -164,8 +163,7 @@ public class GrassCutter : MonoBehaviour
         if (includeColliderSize &&
             bladeCollider != null)
         {
-            Bounds bounds =
-                bladeCollider.bounds;
+            Bounds bounds = bladeCollider.bounds;
 
             float colliderRadius =
                 Mathf.Max(
@@ -180,28 +178,38 @@ public class GrassCutter : MonoBehaviour
                 );
         }
 
-        grassGrid.Cut(cutPosition, effectiveRadius, this);
+        // Pass this cutter as the source.
+        grassGrid.Cut(
+            cutPosition,
+            effectiveRadius,
+            this
+        );
     }
 
     private void OnGrassWasCut(Vector3 grassPosition)
     {
-        if (grassGrid != null && grassGrid.LastCutSource != this)
-            return;
-
-
         if (!cuttingEnabled)
         {
             return;
         }
 
-        Vector3 direction = Vector3.zero;
+        // Ignore grass cut by territory capture or another cutter.
+        if (grassGrid != null &&
+            grassGrid.LastCutSource != null &&
+            grassGrid.LastCutSource != this)
+        {
+            return;
+        }
+
         float moveStrength = 0f;
 
         if (playerMovement != null)
         {
-            direction = playerMovement.CurrentMoveDirection;
-            direction.y = 0f;
-            moveStrength = direction.magnitude;
+            Vector3 movementDirection =
+                playerMovement.CurrentMoveDirection;
+
+            movementDirection.y = 0f;
+            moveStrength = movementDirection.magnitude;
         }
         else
         {
@@ -209,9 +217,9 @@ public class GrassCutter : MonoBehaviour
 
             if (rb != null)
             {
-                direction = rb.linearVelocity;
-                direction.y = 0f;
-                moveStrength = direction.magnitude;
+                Vector3 velocity = rb.linearVelocity;
+                velocity.y = 0f;
+                moveStrength = velocity.magnitude;
             }
         }
 
@@ -220,27 +228,6 @@ public class GrassCutter : MonoBehaviour
             return;
         }
 
-        direction /= moveStrength;
-
-        Vector3 toGrass = grassPosition - transform.position;
-        toGrass.y = 0f;
-
-        float grassDistance = toGrass.magnitude;
-
-        if (grassDistance < 0.0001f)
-        {
-            return;
-        }
-
-        float forwardDistance = Vector3.Dot(toGrass, direction);
-
-        if (forwardDistance < minimumForwardDistance ||
-            forwardDistance / grassDistance < forwardCone)
-        {
-            return;
-        }
-
-        // Audio
         TryPlayCutAudio();
 
         int cutsPerParticle =
@@ -257,22 +244,24 @@ public class GrassCutter : MonoBehaviour
 
         cutsSinceParticle = 0;
 
-        // Particle
+        // Preserve the exact cut blade X/Z position.
         grassPosition.y += particleOffset.y;
+
         PlayCutParticle(grassPosition);
 
-        // UI animation
-        if (GrassCollectUI.Instance != null)
-        {
-            GrassCollectUI.Instance.ShowGrassCollected(grassPosition);
-        }
+        //if (GrassCollectUI.Instance != null)
+        //{
+        //    GrassCollectUI.Instance.ShowGrassCollected(
+        //        grassPosition
+        //    );
+        //}
     }
 
     private void TryPlayCutAudio()
     {
         if (audioSource == null || cutAudioClips == null || cutAudioClips.Length == 0)
         {
-            Debug.Log("Con 1");
+            //Debug.Log("Con 1");
             return;
         }
 
@@ -280,7 +269,7 @@ public class GrassCutter : MonoBehaviour
 
         if (cutsSinceAudio < cutsPerAudioPlay || Time.time < nextAudioTime)
         {
-            Debug.Log("Con 2");
+            //Debug.Log("Con 2");
             return;
         }
 
@@ -289,7 +278,7 @@ public class GrassCutter : MonoBehaviour
 
         AudioClip clip = cutAudioClips[Random.Range(0, cutAudioClips.Length)];
         audioSource.pitch = 1f + Random.Range(-audioPitchVariation, audioPitchVariation);
-        Debug.Log("Audio Function");
+        //Debug.Log("Audio Function");
         audioSource.PlayOneShot(clip, audioVolume);
     }
 
@@ -567,5 +556,11 @@ public class GrassCutter : MonoBehaviour
                 particlePoolRoot.gameObject
             );
         }
+    }
+
+    private void OnDrawGizmos()
+    {
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, cutRadius);
     }
 }

@@ -914,7 +914,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 0}
-  offset: {x: 0, y: 3.35, z: -4.16}
+  offset: {x: 0, y: 5.69, z: -4.08}
   positionSmoothTime: 0.25
   lookOffset: {x: 0, y: -0.62, z: 0.42}
   rotationSmoothness: 7
@@ -3329,18 +3329,11 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1059337035}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2977e3432df9d2a4492753297881f7ed, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GrassCollectUI
-  canvas: {fileID: 1059337038}
-  bucketTarget: {fileID: 1830941128}
-  grassIconPrefab: {fileID: 4107479235871314830, guid: e72bb4092300bc644b8e0c606fc261a6, type: 3}
-  animationDuration: 0.75
-  startScale: 0.8
-  endScale: 0.25
-  easeEffect: 3
 --- !u!1 &1139507175
 GameObject:
   m_ObjectHideFlags: 0
@@ -3578,7 +3571,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 177638, guid: 0abab5bb77339e4428787a870eb31bd3, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 11496292, guid: 0abab5bb77339e4428787a870eb31bd3, type: 3}
       propertyPath: m_ramModuleState
@@ -4460,8 +4453,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   playerPrefab: {fileID: 3733851999030853658, guid: fe02ad926a7106f4aaf157b3098f5a8b, type: 3}
   levelPrefabs:
-  - {fileID: 5648904850929767513, guid: b2f74913519a3c34cbeb4c79ff1a1537, type: 3}
   - {fileID: 6503524754848985428, guid: 08a4700d1bc1e4d47bba4d1c6f929c97, type: 3}
+  - {fileID: 5648904850929767513, guid: b2f74913519a3c34cbeb4c79ff1a1537, type: 3}
   cameraFollow: {fileID: 330585548}
   territoryPercentage: {fileID: 1059337040}
   uiManager: {fileID: 632942365}
@@ -5503,7 +5496,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1830941128
 RectTransform:
   m_ObjectHideFlags: 0
@@ -6215,7 +6208,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2045361540
 RectTransform:
   m_ObjectHideFlags: 0
