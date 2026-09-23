@@ -153,6 +153,32 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
+    public bool IsInsideEnemyTerritory(
+    Vector3 worldPosition)
+    {
+        if (!initialized)
+        {
+            return false;
+        }
+
+        Vector2Int cell =
+            WorldToCell(worldPosition);
+
+        foreach (var entry in enemyTerritories)
+        {
+            HashSet<Vector2Int> territory =
+                entry.Value;
+
+            if (territory != null &&
+                territory.Contains(cell))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 
 
     private void CreateStartingTerritory()
@@ -796,9 +822,63 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
-    public void RemoveEnemy(EnemyAI enemy)
+    public void RemoveEnemy(
+    EnemyAI enemy)
     {
-        if (enemy == null) return;
+        if (enemy == null)
+        {
+            return;
+        }
+
+        if (enemyTerritories.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int>
+                    defeatedTerritory))
+        {
+            // Transfer only this exact enemy's cells.
+            // HashSet prevents existing player cells from
+            // being counted more than once.
+            ownedCells.UnionWith(
+                defeatedTerritory
+            );
+
+            // These cells are normally already cleared, but
+            // this keeps the converted player territory
+            // consistent in every removal situation.
+            if (grassGrid != null &&
+                defeatedTerritory.Count > 0)
+            {
+                grassGrid.CutCells(
+                    defeatedTerritory
+                );
+            }
+
+            // Append the transferred cells to the player's
+            // territory grass using its normal growth behavior.
+            if (territoryRenderer != null &&
+                defeatedTerritory.Count > 0)
+            {
+                territoryRenderer.Rebuild(
+                    ownedCells
+                );
+            }
+
+            enemyTerritories.Remove(enemy);
+        }
+
+        // Clear only the defeated enemy's renderer.
+        if (enemyRenderers.TryGetValue(
+                enemy,
+                out PlayerTerritoryRenderer
+                    defeatedRenderer))
+        {
+            if (defeatedRenderer != null)
+            {
+                defeatedRenderer.Clear();
+            }
+
+            enemyRenderers.Remove(enemy);
+        }
 
         enemyTrails.Remove(enemy);
         enemyTrailCells.Remove(enemy);

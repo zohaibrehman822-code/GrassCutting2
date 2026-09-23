@@ -1,7 +1,12 @@
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections;
 
 public class UIManager : MonoBehaviour
 {
+    public static UIManager Instance { get; private set; }
+
     [Header("Panels")]
     [SerializeField] private GameObject winningPanel;
     [SerializeField] private GameObject failPanel;
@@ -9,6 +14,28 @@ public class UIManager : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private GameManager gameManager;
+    [SerializeField] private Text PlayerDiedText;
+
+    private Coroutine playerDiedCoroutine;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+    }
+
+    private void Start()
+    {
+        if (PlayerDiedText != null)
+        {
+            PlayerDiedText.gameObject.SetActive(false);
+        }
+    }
 
     public void ActiveWinningPanel()
     {
@@ -26,6 +53,32 @@ public class UIManager : MonoBehaviour
             failPanel.SetActive(true);
             GamePanel.SetActive(false);
         }
+    }
+
+    // Shows "Player Died" text for 2 seconds.
+    public void ShowPlayerDiedText()
+    {
+        if (PlayerDiedText == null)
+            return;
+
+        // Stop the previous timer if the function is called again.
+        if (playerDiedCoroutine != null)
+        {
+            StopCoroutine(playerDiedCoroutine);
+        }
+
+        playerDiedCoroutine = StartCoroutine(ShowPlayerDiedTextCoroutine());
+    }
+
+    private IEnumerator ShowPlayerDiedTextCoroutine()
+    {
+        PlayerDiedText.gameObject.SetActive(true);
+
+        yield return new WaitForSeconds(1.5f);
+
+        PlayerDiedText.gameObject.SetActive(false);
+
+        playerDiedCoroutine = null;
     }
 
     // Wire this to the Fail Panel's Restart button (OnClick).

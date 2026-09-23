@@ -2567,6 +2567,8 @@ MonoBehaviour:
   trailHeightOffset: 0.02
   castTrailShadows: 0
   receiveTrailShadows: 0
+  cutGrassTrailPointDistance: 0.1
+  killParticleEffect: {fileID: 100006, guid: e4704660d196fac40802911e12ac76f1, type: 3}
 --- !u!1 &8412532947613486903
 GameObject:
   m_ObjectHideFlags: 0
