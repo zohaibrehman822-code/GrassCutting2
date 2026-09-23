@@ -93,6 +93,9 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     private readonly HashSet<Vector2Int> renderedCells =
         new HashSet<Vector2Int>();
 
+    private readonly HashSet<int> cutMatrixIndices =
+    new HashSet<int>();
+
     private IReadOnlyList<Vector3> pendingCutPositions;
 
     private Mesh grassMesh;
@@ -849,10 +852,92 @@ public void Rebuild(
         }
     }
 
+    public bool CutGrassAt(
+    Vector3 worldPosition,
+    float radius)
+    {
+        if (grassMesh == null ||
+            grassMaterial == null ||
+            matrices.Count == 0)
+        {
+            return false;
+        }
+
+        radius =
+            Mathf.Max(0.01f, radius);
+
+        float radiusSqr =
+            radius * radius;
+
+        // Prevent the growth animation from restoring blades
+        // immediately after they have been cut.
+        FinishGrowth();
+
+        bool cutAny = false;
+
+        for (int i = 0;
+             i < matrices.Count;
+             i++)
+        {
+            if (cutMatrixIndices.Contains(i))
+            {
+                continue;
+            }
+
+            Vector4 translation =
+                matrices[i].GetColumn(3);
+
+            Vector3 bladePosition =
+                new Vector3(
+                    translation.x,
+                    translation.y,
+                    translation.z
+                );
+
+            float differenceX =
+                bladePosition.x -
+                worldPosition.x;
+
+            float differenceZ =
+                bladePosition.z -
+                worldPosition.z;
+
+            float distanceSqr =
+                differenceX *
+                differenceX +
+                differenceZ *
+                differenceZ;
+
+            if (distanceSqr >
+                radiusSqr)
+            {
+                continue;
+            }
+
+            cutMatrixIndices.Add(i);
+
+            // Keep the instance and its index, but make its
+            // scale zero so it is no longer visible.
+            SetMatrix(
+                i,
+                Matrix4x4.TRS(
+                    bladePosition,
+                    Quaternion.identity,
+                    Vector3.zero
+                )
+            );
+
+            cutAny = true;
+        }
+
+        return cutAny;
+    }
+
     public void Clear()
     {
         growingBlades.Clear();
         renderedCells.Clear();
+        cutMatrixIndices.Clear();
         matrices.Clear();
 
         // Retain batch arrays so subsequent captures

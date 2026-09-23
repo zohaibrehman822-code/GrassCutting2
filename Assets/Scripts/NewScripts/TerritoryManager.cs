@@ -179,6 +179,52 @@ public class TerritoryManager : MonoBehaviour
         return false;
     }
 
+    public bool CutEnemyTerritoryGrass(
+    Vector3 worldPosition,
+    float radius)
+    {
+        bool cutAny = false;
+
+        foreach (var entry in enemyRenderers)
+        {
+            EnemyAI enemy =
+                entry.Key;
+
+            PlayerTerritoryRenderer renderer =
+                entry.Value;
+
+            if (enemy == null ||
+                renderer == null)
+            {
+                continue;
+            }
+
+            if (renderer.CutGrassAt(
+                    worldPosition,
+                    radius))
+            {
+                cutAny = true;
+            }
+        }
+
+        return cutAny;
+    }
+
+    public bool CutPlayerTerritoryGrass(
+    Vector3 worldPosition,
+    float radius)
+    {
+        if (territoryRenderer == null)
+        {
+            return false;
+        }
+
+        return territoryRenderer.CutGrassAt(
+            worldPosition,
+            radius
+        );
+    }
+
 
 
     private void CreateStartingTerritory()
@@ -764,42 +810,85 @@ public class TerritoryManager : MonoBehaviour
         return IsInsidePlayerTrail(enemy.transform.position, radius);
     }
 
-    public bool IsPlayerInsideEnemyTrail(Vector3 playerPosition, float radius, out EnemyAI killerEnemy)
+    public bool IsPlayerInsideEnemyTrail(
+    Vector3 playerPosition,
+    float radius,
+    out EnemyAI killerEnemy)
     {
         killerEnemy = null;
 
-        if (!initialized) return false;
+        if (!initialized)
+        {
+            return false;
+        }
 
         foreach (var kvp in enemyTrailCells)
         {
             EnemyAI enemy = kvp.Key;
             HashSet<Vector2Int> trailCellsSet = kvp.Value;
 
-            if (trailCellsSet.Count == 0) continue;
-            if (enemy == null || !enemy.IsAlive || !enemy.IsOutsideTerritory) continue;
+            if (trailCellsSet.Count == 0)
+            {
+                continue;
+            }
 
-            Vector2Int centerCell = WorldToCell(playerPosition);
-            int cellRange = Mathf.CeilToInt(radius / cellSize);
+            // A non-empty registered trail belonging to a living enemy
+            // is an active enemy trail. Its underlying territory does
+            // not affect whether the player can hit it.
+            if (enemy == null || !enemy.IsAlive)
+            {
+                continue;
+            }
+
+            Vector2Int centerCell =
+                WorldToCell(playerPosition);
+
+            int cellRange =
+                Mathf.CeilToInt(radius / cellSize);
 
             for (int x = -cellRange; x <= cellRange; x++)
             {
                 for (int z = -cellRange; z <= cellRange; z++)
                 {
-                    Vector2Int cell = new Vector2Int(centerCell.x + x, centerCell.y + z);
+                    Vector2Int cell =
+                        new Vector2Int(
+                            centerCell.x + x,
+                            centerCell.y + z
+                        );
 
                     if (!trailCellsSet.Contains(cell))
+                    {
                         continue;
+                    }
 
-                    float cellMinX = cell.x * cellSize;
-                    float cellMinZ = cell.y * cellSize;
+                    float cellMinX =
+                        cell.x * cellSize;
 
-                    float closestX = Mathf.Clamp(playerPosition.x, cellMinX, cellMinX + cellSize);
-                    float closestZ = Mathf.Clamp(playerPosition.z, cellMinZ, cellMinZ + cellSize);
+                    float cellMinZ =
+                        cell.y * cellSize;
 
-                    float dx = playerPosition.x - closestX;
-                    float dz = playerPosition.z - closestZ;
+                    float closestX =
+                        Mathf.Clamp(
+                            playerPosition.x,
+                            cellMinX,
+                            cellMinX + cellSize
+                        );
 
-                    if (dx * dx + dz * dz <= radius * radius)
+                    float closestZ =
+                        Mathf.Clamp(
+                            playerPosition.z,
+                            cellMinZ,
+                            cellMinZ + cellSize
+                        );
+
+                    float dx =
+                        playerPosition.x - closestX;
+
+                    float dz =
+                        playerPosition.z - closestZ;
+
+                    if (dx * dx + dz * dz <=
+                        radius * radius)
                     {
                         killerEnemy = enemy;
                         return true;
@@ -818,7 +907,33 @@ public class TerritoryManager : MonoBehaviour
 
         if (territoryRenderer != null)
         {
-            territoryRenderer.Rebuild(ownedCells);
+            territoryRenderer.RebuildAll(
+                ownedCells
+            );
+        }
+
+        // Restore enemy territory grass that the player
+        // temporarily cut before the trail was cancelled.
+        foreach (var entry in enemyRenderers)
+        {
+            EnemyAI enemy =
+                entry.Key;
+
+            PlayerTerritoryRenderer renderer =
+                entry.Value;
+
+            if (enemy == null ||
+                renderer == null)
+            {
+                continue;
+            }
+
+            if (enemyTerritories.TryGetValue(
+                    enemy,
+                    out HashSet<Vector2Int> cells))
+            {
+                renderer.RebuildAll(cells);
+            }
         }
     }
 
@@ -830,43 +945,32 @@ public class TerritoryManager : MonoBehaviour
             return;
         }
 
+        bool transferredTerritory = false;
+
         if (enemyTerritories.TryGetValue(
                 enemy,
                 out HashSet<Vector2Int>
                     defeatedTerritory))
         {
-            // Transfer only this exact enemy's cells.
-            // HashSet prevents existing player cells from
-            // being counted more than once.
-            ownedCells.UnionWith(
-                defeatedTerritory
-            );
-
-            // These cells are normally already cleared, but
-            // this keeps the converted player territory
-            // consistent in every removal situation.
-            if (grassGrid != null &&
-                defeatedTerritory.Count > 0)
+            if (defeatedTerritory.Count > 0)
             {
-                grassGrid.CutCells(
+                ownedCells.UnionWith(
                     defeatedTerritory
                 );
-            }
 
-            // Append the transferred cells to the player's
-            // territory grass using its normal growth behavior.
-            if (territoryRenderer != null &&
-                defeatedTerritory.Count > 0)
-            {
-                territoryRenderer.Rebuild(
-                    ownedCells
-                );
+                transferredTerritory = true;
+
+                if (grassGrid != null)
+                {
+                    grassGrid.CutCells(
+                        defeatedTerritory
+                    );
+                }
             }
 
             enemyTerritories.Remove(enemy);
         }
 
-        // Clear only the defeated enemy's renderer.
         if (enemyRenderers.TryGetValue(
                 enemy,
                 out PlayerTerritoryRenderer
@@ -883,6 +987,17 @@ public class TerritoryManager : MonoBehaviour
         enemyTrails.Remove(enemy);
         enemyTrailCells.Remove(enemy);
         enemyHomePositions.Remove(enemy);
+
+        if (territoryRenderer != null &&
+            transferredTerritory)
+        {
+            // Rebuild instead of append so any grass temporarily
+            // cut by this enemy is restored, while its former
+            // territory becomes player grass.
+            territoryRenderer.RebuildAll(
+                ownedCells
+            );
+        }
     }
 
     // ──── Grid Utilities ────

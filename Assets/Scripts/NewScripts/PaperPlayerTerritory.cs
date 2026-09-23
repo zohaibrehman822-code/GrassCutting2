@@ -136,6 +136,20 @@ public class PaperPlayerTerritory : MonoBehaviour
                 territoryTouchRadius
             );
 
+        // Enemy-trail contact must be checked regardless of whether
+        // the player is currently inside or outside player territory.
+        if (territoryManager.IsPlayerInsideEnemyTrail(
+                transform.position,
+                trailKillRadius,
+                out EnemyAI hitEnemy))
+        {
+            Debug.Log(
+                "Enemy Died - Player hit the enemy's active trail"
+            );
+
+            hitEnemy.Die();
+        }
+
         if (!outsideTerritory)
         {
             if (!touchingTerritory)
@@ -144,28 +158,6 @@ public class PaperPlayerTerritory : MonoBehaviour
             }
 
             return;
-        }
-
-        if (territoryManager.IsPlayerInsideEnemyTrail(
-    transform.position,
-    trailKillRadius,
-    out EnemyAI killerEnemy))
-        {
-            int enemyTerritoryCount = territoryManager.GetEnemyTerritoryCount(killerEnemy);
-            int playerTerritoryCount = territoryManager.OwnedCells.Count;
-
-            if (playerTerritoryCount > enemyTerritoryCount)
-            {
-                Debug.Log("Level Passed - Enemy Died (Player had bigger territory)");
-                killerEnemy.Die();
-            }
-            else if (enemyTerritoryCount > playerTerritoryCount)
-            {
-                Debug.Log("Level Failed - Player Died (Enemy had bigger territory)");
-                OnPlayerDied();
-                return;
-            }
-            // Equal territory: nothing happens, tell me if you want a rule for this case.
         }
 
         territoryManager.AddTrailPosition(
@@ -405,12 +397,24 @@ public class PaperPlayerTerritory : MonoBehaviour
                 worldPosition
             );
 
-        // Render from logical trail samples while inside enemy
-        // territory, or for the remainder of a trail that began
-        // inside enemy territory.
         if (insideEnemyTerritory ||
             useSampledCutGrassTrail)
         {
+            float cutRadius =
+                playerCutter != null
+                    ? playerCutter
+                        .GetEffectiveCutRadius()
+                    : territoryManager.CellSize *
+                      0.5f;
+
+            // Remove the standing enemy territory grass.
+            territoryManager
+                .CutEnemyTerritoryGrass(
+                    worldPosition,
+                    cutRadius
+                );
+
+            // Draw the existing player cut-grass prefab.
             AddCutGrassVisual(
                 worldPosition
             );

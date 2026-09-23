@@ -661,12 +661,24 @@ public class EnemyAI : MonoBehaviour
                 lastCutGrassTrailPosition =
                     currentPosition;
 
-                // Player territory has already been removed from
-                // GrassCutGrid, so manually feed its position into
-                // the existing cut-grass rendering mechanism.
                 if (territoryManager.IsInsideTerritory(
                         currentPosition))
                 {
+                    float cutRadius =
+                        enemyCutter != null
+                            ? enemyCutter
+                                .GetEffectiveCutRadius()
+                            : territoryManager.CellSize *
+                              0.5f;
+
+                    // Remove standing player territory grass.
+                    territoryManager
+                        .CutPlayerTerritoryGrass(
+                            currentPosition,
+                            cutRadius
+                        );
+
+                    // Use the existing enemy cut-grass renderer.
                     AddCutGrassVisual(
                         currentPosition
                     );
@@ -695,11 +707,22 @@ public class EnemyAI : MonoBehaviour
                     lastCutGrassTrailPosition =
                         currentPosition;
 
-                    // Only supply fallback samples on player land.
-                    // Wild grass continues using GrassWasCut.
                     if (territoryManager.IsInsideTerritory(
                             currentPosition))
                     {
+                        float cutRadius =
+                            enemyCutter != null
+                                ? enemyCutter
+                                    .GetEffectiveCutRadius()
+                                : territoryManager.CellSize *
+                                  0.5f;
+
+                        territoryManager
+                            .CutPlayerTerritoryGrass(
+                                currentPosition,
+                                cutRadius
+                            );
+
                         AddCutGrassVisual(
                             currentPosition
                         );

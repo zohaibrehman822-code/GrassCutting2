@@ -129,6 +129,36 @@ public class GrassCutter : MonoBehaviour
         InitializeParticlePool();
     }
 
+    public float GetEffectiveCutRadius()
+    {
+        float effectiveRadius =
+            cutRadius;
+
+        if (includeColliderSize &&
+            bladeCollider != null)
+        {
+            Bounds bounds =
+                bladeCollider.bounds;
+
+            float colliderRadius =
+                Mathf.Max(
+                    bounds.extents.x,
+                    bounds.extents.z
+                );
+
+            effectiveRadius =
+                Mathf.Max(
+                    cutRadius,
+                    colliderRadius
+                );
+        }
+
+        return Mathf.Max(
+            0.01f,
+            effectiveRadius
+        );
+    }
+
     private void OnEnable()
     {
         nextCutTime = 0f;
