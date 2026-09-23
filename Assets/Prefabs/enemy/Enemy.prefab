@@ -2435,7 +2435,7 @@ MonoBehaviour:
   minimumRotationSpeed: 533.3333
   maximumRotationSpeed: 933.3333
   speedChangeRate: 400
-  isRotating: 1
+  isRotating: 0
 --- !u!114 &3016203425607426128
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2449,7 +2449,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GrassCutter
   grassGrid: {fileID: 0}
-  cutRadius: 0.25
+  cutRadius: 0.175
   cutInterval: 0.05
   includeColliderSize: 1
   cuttingEnabled: 1
@@ -2560,6 +2560,13 @@ MonoBehaviour:
   mapEdgeMargin: 0.75
   logStateChanges: 1
   territoryRenderer: {fileID: 0}
+  grassGrid: {fileID: 0}
+  enableCutGrassTrail: 1
+  cuttedGrassPrefab: {fileID: 5700229833463833481, guid: bc838b29fe2b384479ef9fc728d40565, type: 3}
+  cuttedGrassScale: 0.4
+  trailHeightOffset: 0.02
+  castTrailShadows: 0
+  receiveTrailShadows: 0
 --- !u!1 &8412532947613486903
 GameObject:
   m_ObjectHideFlags: 0

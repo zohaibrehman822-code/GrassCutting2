@@ -81,7 +81,7 @@ public class GameManager : MonoBehaviour
         // Instantiate Player at (0, 0.495, 0)
         currentPlayerInstance = Instantiate(
             playerPrefab,
-            new Vector3(0f, 0.495f, 0f),
+            new Vector3(0f, 0.679f, 0f),
             Quaternion.identity
         );
 

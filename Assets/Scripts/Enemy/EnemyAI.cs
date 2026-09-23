@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [RequireComponent(typeof(EnemyMovement))]
 public class EnemyAI : MonoBehaviour
@@ -58,6 +60,32 @@ public class EnemyAI : MonoBehaviour
     [Tooltip("Leave empty to use the one on a child object.")]
     [SerializeField] private PlayerTerritoryRenderer territoryRenderer;
 
+    [Header("Cut Grass Trail")]
+    [SerializeField] private GrassCutGrid grassGrid;
+    [SerializeField] private bool enableCutGrassTrail = true;
+
+    [Tooltip("Used as a mesh/material source; not instantiated per cut.")]
+    [SerializeField] private GameObject cuttedGrassPrefab;
+
+    [Min(0.01f)]
+    [SerializeField] private float cuttedGrassScale = 0.4f;
+
+    [SerializeField] private float trailHeightOffset = 0.02f;
+    [SerializeField] private bool castTrailShadows;
+    [SerializeField] private bool receiveTrailShadows;
+
+    private const int MaxInstancesPerBatch = 1023;
+
+    private readonly List<Matrix4x4[]> cutGrassBatches =
+        new List<Matrix4x4[]>(2);
+
+    private Mesh cutGrassMesh;
+    private Material cutGrassMaterial;
+    private Matrix4x4 cutGrassPrefabMeshLocalMatrix;
+
+    private int activeCutGrassInstanceCount;
+    private GrassCutter enemyCutter;
+
     private State state;
     private bool setupDone;
     private bool isAlive = true;
@@ -87,15 +115,220 @@ public class EnemyAI : MonoBehaviour
     private void Awake()
     {
         movement = GetComponent<EnemyMovement>();
+        enemyCutter = GetComponent<GrassCutter>();
 
         if (territoryManager == null)
         {
-            territoryManager = FindFirstObjectByType<TerritoryManager>();
+            territoryManager =
+                FindFirstObjectByType<TerritoryManager>();
         }
 
         if (territoryRenderer == null)
         {
-            territoryRenderer = GetComponentInChildren<PlayerTerritoryRenderer>(true);
+            territoryRenderer =
+                GetComponentInChildren<PlayerTerritoryRenderer>(true);
+        }
+
+        if (grassGrid == null)
+        {
+            grassGrid =
+                FindFirstObjectByType<GrassCutGrid>();
+        }
+
+        InitializeCutGrassVisual();
+    }
+
+    private void OnEnable()
+    {
+        if (grassGrid == null)
+        {
+            grassGrid =
+                FindFirstObjectByType<GrassCutGrid>();
+        }
+
+        if (grassGrid != null)
+        {
+            grassGrid.GrassWasCut += OnGrassWasCut;
+        }
+    }
+
+    private void LateUpdate()
+    {
+        DrawCutGrassTrail();
+    }
+
+    private void OnGrassWasCut(Vector3 grassPosition)
+    {
+        // GrassWasCut is shared by the player and every enemy.
+        // Only accept cuts made by this specific enemy's cutter.
+        if (enemyCutter == null ||
+            grassGrid == null ||
+            grassGrid.LastCutSource != enemyCutter)
+        {
+            return;
+        }
+
+        if (!enableCutGrassTrail ||
+            cutGrassMesh == null ||
+            cutGrassMaterial == null ||
+            cuttedGrassPrefab == null ||
+            territoryManager == null)
+        {
+            return;
+        }
+
+        Vector3 visualPosition = grassPosition;
+
+        visualPosition.y =
+            territoryManager.GroundY +
+            trailHeightOffset;
+
+        int instanceIndex =
+            activeCutGrassInstanceCount;
+
+        int batchIndex =
+            instanceIndex /
+            MaxInstancesPerBatch;
+
+        int indexInsideBatch =
+            instanceIndex %
+            MaxInstancesPerBatch;
+
+        if (batchIndex >= cutGrassBatches.Count)
+        {
+            cutGrassBatches.Add(
+                new Matrix4x4[MaxInstancesPerBatch]
+            );
+        }
+
+        Matrix4x4 cutTransform =
+            Matrix4x4.TRS(
+                visualPosition,
+                cuttedGrassPrefab.transform.rotation,
+                Vector3.one * cuttedGrassScale
+            );
+
+        cutGrassBatches[batchIndex][indexInsideBatch] =
+            cutTransform *
+            cutGrassPrefabMeshLocalMatrix;
+
+        activeCutGrassInstanceCount++;
+    }
+
+    private void InitializeCutGrassVisual()
+    {
+        if (cuttedGrassPrefab == null)
+        {
+            return;
+        }
+
+        MeshFilter meshFilter =
+            cuttedGrassPrefab
+                .GetComponentInChildren<MeshFilter>(true);
+
+        if (meshFilter == null ||
+            meshFilter.sharedMesh == null)
+        {
+            Debug.LogError(
+                "EnemyAI: Cutted grass prefab needs a MeshFilter and mesh.",
+                this
+            );
+
+            return;
+        }
+
+        MeshRenderer meshRenderer =
+            meshFilter.GetComponent<MeshRenderer>();
+
+        if (meshRenderer == null ||
+            meshRenderer.sharedMaterial == null)
+        {
+            Debug.LogError(
+                "EnemyAI: Cutted grass mesh needs a MeshRenderer and material.",
+                this
+            );
+
+            return;
+        }
+
+        cutGrassMesh =
+            meshFilter.sharedMesh;
+
+        cutGrassMaterial =
+            meshRenderer.sharedMaterial;
+
+        cutGrassMaterial.enableInstancing = true;
+
+        cutGrassPrefabMeshLocalMatrix =
+            cuttedGrassPrefab.transform.worldToLocalMatrix *
+            meshFilter.transform.localToWorldMatrix;
+    }
+
+    private void DrawCutGrassTrail()
+    {
+        if (!enableCutGrassTrail ||
+            cutGrassMesh == null ||
+            cutGrassMaterial == null ||
+            activeCutGrassInstanceCount == 0)
+        {
+            return;
+        }
+
+        ShadowCastingMode shadowMode =
+            castTrailShadows
+                ? ShadowCastingMode.On
+                : ShadowCastingMode.Off;
+
+        for (int batchIndex = 0;
+             batchIndex < cutGrassBatches.Count;
+             batchIndex++)
+        {
+            int batchStart =
+                batchIndex *
+                MaxInstancesPerBatch;
+
+            int remaining =
+                activeCutGrassInstanceCount -
+                batchStart;
+
+            if (remaining <= 0)
+            {
+                break;
+            }
+
+            int drawCount =
+                Mathf.Min(
+                    remaining,
+                    MaxInstancesPerBatch
+                );
+
+            Graphics.DrawMeshInstanced(
+                cutGrassMesh,
+                0,
+                cutGrassMaterial,
+                cutGrassBatches[batchIndex],
+                drawCount,
+                null,
+                shadowMode,
+                receiveTrailShadows,
+                gameObject.layer
+            );
+        }
+    }
+
+    private void ClearCutGrassTrail()
+    {
+        activeCutGrassInstanceCount = 0;
+
+        // Keep the allocated batch arrays so they can be reused
+        // during the enemy's next expansion.
+    }
+
+    private void OnDisable()
+    {
+        if (grassGrid != null)
+        {
+            grassGrid.GrassWasCut -= OnGrassWasCut;
         }
     }
 
@@ -341,7 +574,7 @@ public class EnemyAI : MonoBehaviour
             spawner.NotifyEnemyDied(gameObject);
         }
 
-        Debug.Log("Enemy Died");
+        Debug.Log(" ** Enemy Died ** ");
         Destroy(gameObject);
 
         if (territoryManager != null)
@@ -372,16 +605,26 @@ public class EnemyAI : MonoBehaviour
         {
             if (!wasOutside)
             {
-                territoryManager.StartEnemyTrail(this, transform.position);
+                territoryManager.StartEnemyTrail(
+                    this,
+                    transform.position
+                );
             }
             else
             {
-                territoryManager.AddEnemyTrailPosition(this, transform.position);
+                territoryManager.AddEnemyTrailPosition(
+                    this,
+                    transform.position
+                );
             }
         }
         else if (wasOutside)
         {
             territoryManager.CompleteEnemyTrail(this);
+
+            // Match the player: remove the temporary cut-grass
+            // trail after the territory capture completes.
+            ClearCutGrassTrail();
         }
 
         wasOutside = outsideTerritory;
