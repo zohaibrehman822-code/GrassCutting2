@@ -419,16 +419,12 @@ public class PaperPlayerTerritory : MonoBehaviour
         );
     }
 
-    private void AddVisualTrailPoint(
-    Vector3 worldPosition)
+    private void AddVisualTrailPoint(Vector3 worldPosition)
     {
         worldPosition.y =
-            territoryManager.GroundY +
-            trailHeightOffset;
+            territoryManager.GroundY + trailHeightOffset;
 
-        trailPositions.Add(
-            worldPosition
-        );
+        trailPositions.Add(worldPosition);
 
         bool insideEnemyTerritory =
             territoryManager.IsInsideEnemyTerritory(
@@ -440,22 +436,23 @@ public class PaperPlayerTerritory : MonoBehaviour
         {
             float cutRadius =
                 playerCutter != null
-                    ? playerCutter
-                        .GetEffectiveCutRadius()
-                    : territoryManager.CellSize *
-                      0.5f;
+                    ? playerCutter.GetEffectiveCutRadius()
+                    : territoryManager.CellSize * 0.5f;
 
-            // Remove the standing enemy territory grass.
-            territoryManager
-                .CutEnemyTerritoryGrass(
+            bool cutEnemyGrass =
+                territoryManager.CutEnemyTerritoryGrass(
                     worldPosition,
                     cutRadius
                 );
 
-            // Draw the existing player cut-grass prefab.
-            AddCutGrassVisual(
-                worldPosition
-            );
+            if (cutEnemyGrass && playerCutter != null)
+            {
+                playerCutter.PlayCapturedTerritoryParticle(
+                    worldPosition
+                );
+            }
+
+            AddCutGrassVisual(worldPosition);
         }
 
         if (trailRenderer == null ||

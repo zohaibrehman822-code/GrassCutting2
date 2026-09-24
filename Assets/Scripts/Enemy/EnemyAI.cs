@@ -55,6 +55,8 @@ public class EnemyAI : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool logStateChanges;
 
+    private float nextReturnRepathTime;
+
     private EnemyMovement movement;
 
     [Tooltip("Leave empty to use the one on a child object.")]
@@ -538,20 +540,147 @@ public class EnemyAI : MonoBehaviour
 
     private void BeginExpansion()
     {
-        Vector2 direction2D = Random.insideUnitCircle.normalized;
-        Vector3 forward = new Vector3(direction2D.x, 0f, direction2D.y);
-        Vector3 side = new Vector3(-forward.z, 0f, forward.x);
+        Vector3 toPlayer = Vector3.zero;
+        bool hasPlayer = playerTerritory != null;
 
-        if (Random.value < 0.5f)
+        if (hasPlayer)
         {
-            side = -side;
+            toPlayer =
+                playerTerritory.transform.position -
+                transform.position;
+            toPlayer.y = 0f;
+
+            if (toPlayer.sqrMagnitude < 0.01f)
+            {
+                hasPlayer = false;
+            }
         }
 
-        float forwardDistance = Random.Range(forwardDistanceRange.x, forwardDistanceRange.y);
-        float sideDistance = Random.Range(sideDistanceRange.x, sideDistanceRange.y);
+        float bestScore = float.NegativeInfinity;
+        Vector3 bestWaypointA = transform.position;
+        Vector3 bestWaypointB = transform.position;
 
-        waypointA = ClampToMap(transform.position + forward * forwardDistance);
-        waypointB = ClampToMap(waypointA + side * sideDistance);
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            Vector3 forward;
+
+            if (hasPlayer && attempt < 8)
+            {
+                forward =
+                    Quaternion.Euler(
+                        0f,
+                        Random.Range(-65f, 65f),
+                        0f
+                    ) * toPlayer.normalized;
+            }
+            else
+            {
+                Vector2 randomDirection =
+                    Random.insideUnitCircle.normalized;
+
+                forward = new Vector3(
+                    randomDirection.x,
+                    0f,
+                    randomDirection.y
+                );
+            }
+
+            if (forward.sqrMagnitude < 0.01f)
+            {
+                continue;
+            }
+
+            Vector3 side =
+                new Vector3(-forward.z, 0f, forward.x);
+
+            if (Random.value < 0.5f)
+            {
+                side = -side;
+            }
+
+            float forwardDistance = Random.Range(
+                forwardDistanceRange.x,
+                forwardDistanceRange.y
+            );
+
+            float sideDistance = Random.Range(
+                sideDistanceRange.x,
+                sideDistanceRange.y
+            );
+
+            Vector3 candidateA = ClampToMap(
+                transform.position +
+                forward * forwardDistance
+            );
+
+            Vector3 candidateB = ClampToMap(
+                candidateA +
+                side * sideDistance
+            );
+
+            if ((candidateA - transform.position)
+                    .sqrMagnitude < 1f ||
+                (candidateB - candidateA)
+                    .sqrMagnitude < 1f)
+            {
+                continue;
+            }
+
+            float score = Random.Range(0f, 0.4f);
+
+            if (territoryManager.IsInsideTerritory(candidateA))
+            {
+                score += 4f;
+            }
+
+            if (territoryManager.IsInsideTerritory(
+                    (candidateA + candidateB) * 0.5f))
+            {
+                score += 2f;
+            }
+
+            if (territoryManager.IsInsideTerritory(candidateB))
+            {
+                score += 6f;
+            }
+
+            if (territoryManager.IsInsideEnemyTerritory(candidateB))
+            {
+                score -= 3f;
+            }
+
+            if (hasPlayer)
+            {
+                Vector2 candidatePoint =
+                    new Vector2(candidateB.x, candidateB.z);
+
+                Vector2 playerPoint =
+                    new Vector2(
+                        playerTerritory.transform.position.x,
+                        playerTerritory.transform.position.z
+                    );
+
+                score -=
+                    Vector2.Distance(candidatePoint, playerPoint)
+                    * 0.12f;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestWaypointA = candidateA;
+                bestWaypointB = candidateB;
+            }
+        }
+
+        if (float.IsNegativeInfinity(bestScore))
+        {
+            EnterResting();
+            return;
+        }
+
+        waypointA = bestWaypointA;
+        waypointB = bestWaypointB;
         waypointIndex = 0;
 
         if (!movement.SetDestination(waypointA))
@@ -596,8 +725,9 @@ public class EnemyAI : MonoBehaviour
     {
         ChangeState(State.Returning);
 
+        // Give the return trip longer than the outward trip.
         stateEndTime =
-            Time.time + maxExpandSeconds;
+            Time.time + maxExpandSeconds * 2f;
 
         if (!territoryManager
             .TryGetNearestEnemyTerritoryPosition(
@@ -610,10 +740,9 @@ public class EnemyAI : MonoBehaviour
         }
 
         homePosition = returnPosition;
+        movement.SetDestination(homePosition);
 
-        movement.SetDestination(
-            homePosition
-        );
+        nextReturnRepathTime = Time.time + 0.5f;
     }
 
     private void UpdateReturning()
@@ -621,28 +750,6 @@ public class EnemyAI : MonoBehaviour
         if (!outsideTerritory)
         {
             EnterResting();
-            return;
-        }
-
-        if (!territoryManager
-            .TryGetNearestEnemyTerritoryPosition(
-                this,
-                transform.position,
-                out Vector3 returnPosition))
-        {
-            Die();
-            return;
-        }
-
-        homePosition = returnPosition;
-
-        bool destinationAccepted =
-            movement.SetDestination(
-                homePosition
-            );
-
-        if (destinationAccepted)
-        {
             return;
         }
 
@@ -655,7 +762,28 @@ public class EnemyAI : MonoBehaviour
             );
 
             Die();
+            return;
         }
+
+        if (Time.time < nextReturnRepathTime)
+        {
+            return;
+        }
+
+        nextReturnRepathTime = Time.time + 0.5f;
+
+        if (!territoryManager
+            .TryGetNearestEnemyTerritoryPosition(
+                this,
+                transform.position,
+                out Vector3 returnPosition))
+        {
+            Die();
+            return;
+        }
+
+        homePosition = returnPosition;
+        movement.SetDestination(homePosition);
     }
 
     // ---------------- Helpers ----------------
@@ -778,8 +906,7 @@ public class EnemyAI : MonoBehaviour
     {
         if (outsideTerritory)
         {
-            Vector3 currentPosition =
-                transform.position;
+            Vector3 currentPosition = transform.position;
 
             if (!wasOutside)
             {
@@ -796,22 +923,28 @@ public class EnemyAI : MonoBehaviour
                 {
                     float cutRadius =
                         enemyCutter != null
-                            ? enemyCutter
-                                .GetEffectiveCutRadius()
-                            : territoryManager.CellSize *
-                              0.5f;
+                            ? enemyCutter.GetEffectiveCutRadius()
+                            : territoryManager.CellSize * 0.5f;
 
-                    // Remove standing player territory grass.
-                    territoryManager
-                        .CutPlayerTerritoryGrass(
+                    bool cutPlayerGrass =
+                        territoryManager.CutPlayerTerritoryGrass(
                             currentPosition,
                             cutRadius
                         );
 
-                    // Use the existing enemy cut-grass renderer.
-                    AddCutGrassVisual(
-                        currentPosition
-                    );
+                    if (cutPlayerGrass && enemyCutter != null)
+                    {
+                        Vector3 effectPosition =
+                            currentPosition;
+                        effectPosition.y =
+                            territoryManager.GroundY;
+
+                        enemyCutter.PlayCapturedTerritoryParticle(
+                            effectPosition
+                        );
+                    }
+
+                    AddCutGrassVisual(currentPosition);
                 }
             }
             else
@@ -822,8 +955,7 @@ public class EnemyAI : MonoBehaviour
                 );
 
                 Vector3 movement =
-                    currentPosition -
-                    lastCutGrassTrailPosition;
+                    currentPosition - lastCutGrassTrailPosition;
 
                 movement.y = 0f;
 
@@ -842,30 +974,35 @@ public class EnemyAI : MonoBehaviour
                     {
                         float cutRadius =
                             enemyCutter != null
-                                ? enemyCutter
-                                    .GetEffectiveCutRadius()
-                                : territoryManager.CellSize *
-                                  0.5f;
+                                ? enemyCutter.GetEffectiveCutRadius()
+                                : territoryManager.CellSize * 0.5f;
 
-                        territoryManager
-                            .CutPlayerTerritoryGrass(
+                        bool cutPlayerGrass =
+                            territoryManager.CutPlayerTerritoryGrass(
                                 currentPosition,
                                 cutRadius
                             );
 
-                        AddCutGrassVisual(
-                            currentPosition
-                        );
+                        if (cutPlayerGrass && enemyCutter != null)
+                        {
+                            Vector3 effectPosition =
+                                currentPosition;
+                            effectPosition.y =
+                                territoryManager.GroundY;
+
+                            enemyCutter.PlayCapturedTerritoryParticle(
+                                effectPosition
+                            );
+                        }
+
+                        AddCutGrassVisual(currentPosition);
                     }
                 }
             }
         }
         else if (wasOutside)
         {
-            territoryManager.CompleteEnemyTrail(
-                this
-            );
-
+            territoryManager.CompleteEnemyTrail(this);
             ClearCutGrassTrail();
         }
 

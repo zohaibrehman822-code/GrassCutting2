@@ -505,11 +505,17 @@ public class TerritoryManager : MonoBehaviour
 
     // ──── Enemy Trail System ────
 
-    public void CreateEnemyStartingTerritory(EnemyAI enemy, Vector3 worldPosition, int width, int height)
+    public void CreateEnemyStartingTerritory(
+    EnemyAI enemy,
+    Vector3 worldPosition,
+    int width,
+    int height)
     {
         if (!initialized || enemy == null) return;
 
-        if (!enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> territory))
+        if (!enemyTerritories.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int> territory))
         {
             territory = new HashSet<Vector2Int>();
             enemyTerritories.Add(enemy, territory);
@@ -525,9 +531,12 @@ public class TerritoryManager : MonoBehaviour
         {
             for (int z = -halfHeight; z <= halfHeight; z++)
             {
-                Vector2Int cell = new Vector2Int(center.x + x, center.y + z);
+                Vector2Int cell =
+                    new Vector2Int(center.x + x, center.y + z);
 
-                if (IsInsideBounds(cell) && !IsCellClaimed(cell) && territory.Add(cell))
+                if (IsInsideBounds(cell) &&
+                    !IsCellClaimed(cell) &&
+                    territory.Add(cell))
                 {
                     cells.Add(cell);
                 }
@@ -538,6 +547,8 @@ public class TerritoryManager : MonoBehaviour
         {
             grassGrid.CutCells(cells);
         }
+
+        RefreshEnemyRenderer(enemy);
     }
 
     public void RegisterEnemyHome(EnemyAI enemy)

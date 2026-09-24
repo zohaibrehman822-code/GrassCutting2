@@ -32,6 +32,10 @@ public class GrassCutter : MonoBehaviour
     [SerializeField]
     private GameObject cutParticlePrefab;
 
+    [SerializeField] private GameObject capturedTerritoryParticlePrefab;
+    private PooledParticle[] capturedTerritoryParticlePool;
+    private int nextCapturedParticleIndex;
+
     [Tooltip("Small fixed pool recommended for low-end devices.")]
     [Range(2, 25)]
     [SerializeField]
@@ -352,129 +356,153 @@ public class GrassCutter : MonoBehaviour
 
     private void InitializeParticlePool()
     {
-        if (cutParticlePrefab == null)
+        if (cutParticlePrefab == null &&
+            capturedTerritoryParticlePrefab == null)
         {
             return;
         }
 
-        int poolSize =
-            Mathf.Max(2, particlePoolSize);
-
-        particlePool =
-            new PooledParticle[poolSize];
+        int poolSize = Mathf.Max(2, particlePoolSize);
 
         GameObject poolObject =
             new GameObject("GrassCutParticlePool");
 
-        particlePoolRoot =
-            poolObject.transform;
+        particlePoolRoot = poolObject.transform;
 
-        for (int i = 0; i < poolSize; i++)
+        for (int poolType = 0; poolType < 2; poolType++)
         {
-            GameObject particleObject =
-                Instantiate(
-                    cutParticlePrefab,
-                    particlePoolRoot
-                );
+            GameObject prefab = poolType == 0
+                ? cutParticlePrefab
+                : capturedTerritoryParticlePrefab;
 
-            particleObject.name =
-                cutParticlePrefab.name +
-                "_Pooled_" +
-                i;
-
-            ParticleSystem[] systems =
-                particleObject
-                    .GetComponentsInChildren
-                        <ParticleSystem>(true);
-
-            float duration =
-                CalculateDuration(systems);
-
-            for (int systemIndex = 0;
-                 systemIndex < systems.Length;
-                 systemIndex++)
+            if (prefab == null)
             {
-                ParticleSystem system =
-                    systems[systemIndex];
-
-                if (system == null)
-                {
-                    continue;
-                }
-
-                ParticleSystem.MainModule main =
-                    system.main;
-
-                main.loop = false;
-                main.playOnAwake = false;
-                main.stopAction =
-                    ParticleSystemStopAction.None;
-
-                system.Stop(
-                    true,
-                    ParticleSystemStopBehavior
-                        .StopEmittingAndClear
-                );
+                continue;
             }
 
-            particleObject.SetActive(false);
+            PooledParticle[] pool =
+                new PooledParticle[poolSize];
 
-            particlePool[i] =
-                new PooledParticle
+            for (int i = 0; i < poolSize; i++)
+            {
+                GameObject particleObject =
+                    Instantiate(prefab, particlePoolRoot);
+
+                particleObject.name =
+                    prefab.name + "_Pooled_" + i;
+
+                ParticleSystem[] systems =
+                    particleObject
+                        .GetComponentsInChildren<ParticleSystem>(true);
+
+                float duration = CalculateDuration(systems);
+
+                for (int systemIndex = 0;
+                     systemIndex < systems.Length;
+                     systemIndex++)
+                {
+                    ParticleSystem system = systems[systemIndex];
+
+                    if (system == null)
+                    {
+                        continue;
+                    }
+
+                    ParticleSystem.MainModule main = system.main;
+                    main.loop = false;
+                    main.playOnAwake = false;
+                    main.stopAction = ParticleSystemStopAction.None;
+
+                    system.Stop(
+                        true,
+                        ParticleSystemStopBehavior.StopEmittingAndClear
+                    );
+                }
+
+                particleObject.SetActive(false);
+
+                pool[i] = new PooledParticle
                 {
                     Root = particleObject,
                     Systems = systems,
                     Duration = duration
                 };
+            }
+
+            if (poolType == 0)
+            {
+                particlePool = pool;
+            }
+            else
+            {
+                capturedTerritoryParticlePool = pool;
+            }
         }
     }
 
     private void PlayCutParticle(
-        Vector3 worldPosition)
+    Vector3 worldPosition,
+    bool capturedTerritory = false)
     {
-        if (particlePool == null ||
-            particlePool.Length == 0)
+        PooledParticle[] pool = capturedTerritory
+            ? capturedTerritoryParticlePool
+            : particlePool;
+
+        GameObject prefab = capturedTerritory
+            ? capturedTerritoryParticlePrefab
+            : cutParticlePrefab;
+
+        if (pool == null || pool.Length == 0 || prefab == null)
         {
             return;
         }
 
+        int nextIndex = capturedTerritory
+            ? nextCapturedParticleIndex
+            : nextParticleIndex;
+
         PooledParticle particle = null;
-        for (int i = 0; i < particlePool.Length; i++)
+
+        for (int i = 0; i < pool.Length; i++)
         {
-            int index = (nextParticleIndex + i) % particlePool.Length;
-            if (particlePool[index].Playing)
+            int index = (nextIndex + i) % pool.Length;
+
+            if (pool[index].Playing)
             {
                 continue;
             }
 
-            particle = particlePool[index];
-            nextParticleIndex = (index + 1) % particlePool.Length;
+            particle = pool[index];
+            nextIndex = (index + 1) % pool.Length;
             break;
         }
 
-        // Keep active bursts at their original world positions.
         if (particle == null)
         {
             return;
         }
 
+        if (capturedTerritory)
+        {
+            nextCapturedParticleIndex = nextIndex;
+        }
+        else
+        {
+            nextParticleIndex = nextIndex;
+        }
+
         StopParticle(particle);
 
-        particle.Root.transform
-            .SetPositionAndRotation(
-                worldPosition,
-                cutParticlePrefab
-                    .transform.rotation
-            );
+        particle.Root.transform.SetPositionAndRotation(
+            worldPosition,
+            prefab.transform.rotation
+        );
 
         particle.Root.SetActive(true);
 
-        for (int i = 0;
-             i < particle.Systems.Length;
-             i++)
+        for (int i = 0; i < particle.Systems.Length; i++)
         {
-            ParticleSystem system =
-                particle.Systems[i];
+            ParticleSystem system = particle.Systems[i];
 
             if (system != null)
             {
@@ -483,34 +511,47 @@ public class GrassCutter : MonoBehaviour
         }
 
         particle.Playing = true;
-
         particle.ReleaseTime =
-            Time.time +
-            particle.Duration +
-            cleanupPadding;
+            Time.time + particle.Duration + cleanupPadding;
     }
 
-    private void UpdateParticlePool()
+    public void PlayCapturedTerritoryParticle(
+    Vector3 worldPosition)
     {
-        if (particlePool == null)
+        if (!cuttingEnabled ||
+            capturedTerritoryParticlePrefab == null)
         {
             return;
         }
 
+        worldPosition.y += particleOffset.y;
+        PlayCutParticle(worldPosition, true);
+    }
+
+    private void UpdateParticlePool()
+    {
         float currentTime = Time.time;
 
-        for (int i = 0;
-             i < particlePool.Length;
-             i++)
+        for (int poolType = 0; poolType < 2; poolType++)
         {
-            PooledParticle particle =
-                particlePool[i];
+            PooledParticle[] pool = poolType == 0
+                ? particlePool
+                : capturedTerritoryParticlePool;
 
-            if (particle.Playing &&
-                currentTime >=
-                particle.ReleaseTime)
+            if (pool == null)
             {
-                StopParticle(particle);
+                continue;
+            }
+
+            for (int i = 0; i < pool.Length; i++)
+            {
+                PooledParticle particle = pool[i];
+
+                if (particle.Playing &&
+                    currentTime >= particle.ReleaseTime)
+                {
+                    StopParticle(particle);
+                }
             }
         }
     }
@@ -603,16 +644,21 @@ public class GrassCutter : MonoBehaviour
         cutsSinceParticle = 0;
         cutsSinceAudio = 0;
 
-        if (particlePool == null)
+        for (int poolType = 0; poolType < 2; poolType++)
         {
-            return;
-        }
+            PooledParticle[] pool = poolType == 0
+                ? particlePool
+                : capturedTerritoryParticlePool;
 
-        for (int i = 0;
-             i < particlePool.Length;
-             i++)
-        {
-            StopParticle(particlePool[i]);
+            if (pool == null)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < pool.Length; i++)
+            {
+                StopParticle(pool[i]);
+            }
         }
     }
 
