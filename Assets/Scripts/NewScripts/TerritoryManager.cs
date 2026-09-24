@@ -37,6 +37,10 @@ public class TerritoryManager : MonoBehaviour
 
     private readonly Dictionary<EnemyAI, List<Vector2Int>> enemyTrails = new Dictionary<EnemyAI, List<Vector2Int>>();
     private readonly Dictionary<EnemyAI, HashSet<Vector2Int>> enemyTrailCells = new Dictionary<EnemyAI, HashSet<Vector2Int>>();
+
+    private readonly Dictionary<EnemyAI, List<Vector3>> enemyTrailWorldPositions =
+    new Dictionary<EnemyAI, List<Vector3>>();
+
     private readonly Dictionary<EnemyAI, Vector3> enemyHomePositions = new Dictionary<EnemyAI, Vector3>();
 
     private readonly Dictionary<EnemyAI, HashSet<Vector2Int>> enemyTerritories = new Dictionary<EnemyAI, HashSet<Vector2Int>>();
@@ -89,7 +93,10 @@ public class TerritoryManager : MonoBehaviour
     {
         if (playArea == null || territoryRenderer == null)
         {
-            Debug.LogError("TerritoryManager: Play Area or Territory Renderer is missing.", this);
+            Debug.LogError(
+                "TerritoryManager: Play Area or Territory Renderer is missing.",
+                this
+            );
             return;
         }
 
@@ -113,10 +120,9 @@ public class TerritoryManager : MonoBehaviour
         trail.Clear();
         enemyTrails.Clear();
         enemyTrailCells.Clear();
+        enemyTrailWorldPositions.Clear();
         enemyHomePositions.Clear();
-
         enemyTerritories.Clear();
-
         enemyRenderers.Clear();
 
         initialized = true;
@@ -270,30 +276,52 @@ public class TerritoryManager : MonoBehaviour
         AddConnectedTrailCells(previous, destination);
     }
 
-    private void AddConnectedTrailCells(Vector2Int from, Vector2Int to)
+    private void AddConnectedTrailCells(
+    Vector2Int from,
+    Vector2Int to)
     {
-        int differenceX = to.x - from.x;
-        int differenceZ = to.y - from.y;
-        int steps = Mathf.Max(Mathf.Abs(differenceX), Mathf.Abs(differenceZ));
+        int currentX = from.x;
+        int currentZ = from.y;
 
-        if (steps == 0) return;
+        int differenceX =
+            Mathf.Abs(to.x - from.x);
 
-        Vector2Int previous = from;
+        int differenceZ =
+            Mathf.Abs(to.y - from.y);
 
-        for (int step = 1; step <= steps; step++)
+        int directionX =
+            from.x < to.x ? 1 : -1;
+
+        int directionZ =
+            from.y < to.y ? 1 : -1;
+
+        int error =
+            differenceX - differenceZ;
+
+        while (currentX != to.x ||
+               currentZ != to.y)
         {
-            Vector2Int next = new Vector2Int(
-                from.x + Mathf.RoundToInt(differenceX * (step / (float)steps)),
-                from.y + Mathf.RoundToInt(differenceZ * (step / (float)steps))
-            );
+            int doubledError =
+                error * 2;
 
-            if (next.x != previous.x && next.y != previous.y)
+            if (doubledError > -differenceZ)
             {
-                AddTrailCell(new Vector2Int(next.x, previous.y));
+                error -= differenceZ;
+                currentX += directionX;
             }
 
-            AddTrailCell(next);
-            previous = next;
+            if (doubledError < differenceX)
+            {
+                error += differenceX;
+                currentZ += directionZ;
+            }
+
+            AddTrailCell(
+                new Vector2Int(
+                    currentX,
+                    currentZ
+                )
+            );
         }
     }
 
@@ -540,9 +568,76 @@ public class TerritoryManager : MonoBehaviour
         return TouchesCells(cells, enemy.transform.position, radius);
     }
 
+    public bool TryGetNearestEnemyTerritoryPosition(
+    EnemyAI enemy,
+    Vector3 fromPosition,
+    out Vector3 territoryPosition)
+    {
+        territoryPosition = fromPosition;
+
+        if (!initialized || enemy == null)
+        {
+            return false;
+        }
+
+        if (!enemyTerritories.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int> cells) ||
+            cells == null ||
+            cells.Count == 0)
+        {
+            return false;
+        }
+
+        float nearestDistanceSqr =
+            float.PositiveInfinity;
+
+        Vector2Int nearestCell =
+            default;
+
+        bool foundCell = false;
+
+        foreach (Vector2Int cell in cells)
+        {
+            Vector3 cellPosition =
+                CellToWorld(cell);
+
+            float distanceSqr =
+                new Vector2(
+                    cellPosition.x - fromPosition.x,
+                    cellPosition.z - fromPosition.z
+                ).sqrMagnitude;
+
+            if (distanceSqr >= nearestDistanceSqr)
+            {
+                continue;
+            }
+
+            nearestDistanceSqr = distanceSqr;
+            nearestCell = cell;
+            foundCell = true;
+        }
+
+        if (!foundCell)
+        {
+            return false;
+        }
+
+        territoryPosition =
+            CellToWorld(nearestCell);
+
+        territoryPosition.y =
+            fromPosition.y;
+
+        return true;
+    }
+
     public void StartEnemyTrail(EnemyAI enemy, Vector3 worldPosition)
     {
-        if (!initialized || enemy == null) return;
+        if (!initialized || enemy == null)
+        {
+            return;
+        }
 
         if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail))
         {
@@ -554,7 +649,9 @@ public class TerritoryManager : MonoBehaviour
             trail.Clear();
         }
 
-        if (!enemyTrailCells.TryGetValue(enemy, out HashSet<Vector2Int> cells))
+        if (!enemyTrailCells.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int> cells))
         {
             cells = new HashSet<Vector2Int>();
             enemyTrailCells[enemy] = cells;
@@ -564,7 +661,24 @@ public class TerritoryManager : MonoBehaviour
             cells.Clear();
         }
 
+        if (!enemyTrailWorldPositions.TryGetValue(
+                enemy,
+                out List<Vector3> worldPositions))
+        {
+            worldPositions = new List<Vector3>(64);
+            enemyTrailWorldPositions[enemy] = worldPositions;
+        }
+        else
+        {
+            worldPositions.Clear();
+        }
+
         AddEnemyTrailCell(enemy, WorldToCell(worldPosition));
+
+        if (trail.Count > 0)
+        {
+            worldPositions.Add(worldPosition);
+        }
     }
 
     private void AddEnemyTrailCell(EnemyAI enemy, Vector2Int cell)
@@ -584,59 +698,129 @@ public class TerritoryManager : MonoBehaviour
 
     public void AddEnemyTrailPosition(EnemyAI enemy, Vector3 worldPosition)
     {
-        if (!initialized || enemy == null) return;
-
-        if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail) || trail.Count == 0)
+        if (!initialized || enemy == null)
+        {
             return;
+        }
+
+        if (!enemyTrails.TryGetValue(
+                enemy,
+                out List<Vector2Int> trail) ||
+            trail.Count == 0)
+        {
+            return;
+        }
+
+        if (enemyTrailWorldPositions.TryGetValue(
+                enemy,
+                out List<Vector3> worldPositions))
+        {
+            Vector3 previousPosition =
+                worldPositions[worldPositions.Count - 1];
+
+            Vector2 movement =
+                new Vector2(
+                    worldPosition.x - previousPosition.x,
+                    worldPosition.z - previousPosition.z
+                );
+
+            if (movement.sqrMagnitude > 0.000001f)
+            {
+                worldPositions.Add(worldPosition);
+            }
+        }
 
         Vector2Int from = trail[trail.Count - 1];
         Vector2Int to = WorldToCell(worldPosition);
 
         int differenceX = to.x - from.x;
         int differenceZ = to.y - from.y;
-        int steps = Mathf.Max(Mathf.Abs(differenceX), Mathf.Abs(differenceZ));
+        int steps = Mathf.Max(
+            Mathf.Abs(differenceX),
+            Mathf.Abs(differenceZ)
+        );
 
-        if (steps == 0) return;
+        if (steps == 0)
+        {
+            return;
+        }
 
         Vector2Int previous = from;
 
         for (int step = 1; step <= steps; step++)
         {
             Vector2Int next = new Vector2Int(
-                from.x + Mathf.RoundToInt(differenceX * (step / (float)steps)),
-                from.y + Mathf.RoundToInt(differenceZ * (step / (float)steps))
+                from.x + Mathf.RoundToInt(
+                    differenceX * (step / (float)steps)
+                ),
+                from.y + Mathf.RoundToInt(
+                    differenceZ * (step / (float)steps)
+                )
             );
 
-            if (next.x != previous.x && next.y != previous.y)
+            if (next.x != previous.x &&
+                next.y != previous.y)
             {
-                AddEnemyTrailCell(enemy, new Vector2Int(next.x, previous.y));
+                AddEnemyTrailCell(
+                    enemy,
+                    new Vector2Int(next.x, previous.y)
+                );
             }
 
             AddEnemyTrailCell(enemy, next);
             previous = next;
         }
     }
-
     public void CompleteEnemyTrail(EnemyAI enemy)
     {
-        if (!initialized || enemy == null) return;
-
-        if (!enemyTrails.TryGetValue(enemy, out List<Vector2Int> trail) || trail.Count == 0)
+        if (!initialized || enemy == null)
+        {
             return;
+        }
 
-        HashSet<Vector2Int> trailSet = enemyTrailCells[enemy];
+        if (!enemyTrails.TryGetValue(
+                enemy,
+                out List<Vector2Int> trail) ||
+            trail.Count == 0)
+        {
+            if (enemyTrailWorldPositions.TryGetValue(
+                    enemy,
+                    out List<Vector3> emptyWorldPositions))
+            {
+                emptyWorldPositions.Clear();
+            }
 
-        int captured = CaptureEnemyEnclosedArea(enemy, trail, trailSet);
+            return;
+        }
 
-        // Clear (not remove) so the lists are reused next time.
+        HashSet<Vector2Int> trailSet =
+            enemyTrailCells[enemy];
+
+        int captured =
+            CaptureEnemyEnclosedArea(
+                enemy,
+                trail,
+                trailSet
+            );
+
         trail.Clear();
         trailSet.Clear();
 
+        if (enemyTrailWorldPositions.TryGetValue(
+                enemy,
+                out List<Vector3> worldPositions))
+        {
+            worldPositions.Clear();
+        }
+
         if (captured > 0)
         {
-            Debug.Log($"Area Captured by Enemy - {enemy.name} ({captured} cells)");
+            Debug.Log(
+                $"Area Captured by Enemy - {enemy.name} ({captured} cells)"
+            );
         }
     }
+
 
     private int CaptureEnemyEnclosedArea(
     EnemyAI enemy,
@@ -822,77 +1006,79 @@ public class TerritoryManager : MonoBehaviour
             return false;
         }
 
-        foreach (var kvp in enemyTrailCells)
+        Vector2 playerPoint =
+            new Vector2(
+                playerPosition.x,
+                playerPosition.z
+            );
+
+        float hitRadius =
+            Mathf.Max(0f, radius);
+
+        float radiusSqr =
+            hitRadius * hitRadius;
+
+        foreach (var entry in enemyTrailWorldPositions)
         {
-            EnemyAI enemy = kvp.Key;
-            HashSet<Vector2Int> trailCellsSet = kvp.Value;
+            EnemyAI enemy = entry.Key;
+            List<Vector3> points = entry.Value;
 
-            if (trailCellsSet.Count == 0)
+            if (enemy == null ||
+                !enemy.IsAlive ||
+                points == null ||
+                points.Count == 0 ||
+                !enemyTrailCells.TryGetValue(
+                    enemy,
+                    out HashSet<Vector2Int> activeCells) ||
+                activeCells.Count == 0)
             {
                 continue;
             }
 
-            // A non-empty registered trail belonging to a living enemy
-            // is an active enemy trail. Its underlying territory does
-            // not affect whether the player can hit it.
-            if (enemy == null || !enemy.IsAlive)
+            for (int i = 0; i < points.Count; i++)
             {
-                continue;
-            }
+                Vector2 start =
+                    new Vector2(
+                        points[i].x,
+                        points[i].z
+                    );
 
-            Vector2Int centerCell =
-                WorldToCell(playerPosition);
+                Vector2 closestPoint = start;
 
-            int cellRange =
-                Mathf.CeilToInt(radius / cellSize);
-
-            for (int x = -cellRange; x <= cellRange; x++)
-            {
-                for (int z = -cellRange; z <= cellRange; z++)
+                if (i + 1 < points.Count)
                 {
-                    Vector2Int cell =
-                        new Vector2Int(
-                            centerCell.x + x,
-                            centerCell.y + z
+                    Vector2 end =
+                        new Vector2(
+                            points[i + 1].x,
+                            points[i + 1].z
                         );
 
-                    if (!trailCellsSet.Contains(cell))
+                    Vector2 segment =
+                        end - start;
+
+                    float segmentLengthSqr =
+                        segment.sqrMagnitude;
+
+                    if (segmentLengthSqr > 0.000001f)
                     {
-                        continue;
+                        float fraction =
+                            Mathf.Clamp01(
+                                Vector2.Dot(
+                                    playerPoint - start,
+                                    segment
+                                ) / segmentLengthSqr
+                            );
+
+                        closestPoint =
+                            start + segment * fraction;
                     }
+                }
 
-                    float cellMinX =
-                        cell.x * cellSize;
-
-                    float cellMinZ =
-                        cell.y * cellSize;
-
-                    float closestX =
-                        Mathf.Clamp(
-                            playerPosition.x,
-                            cellMinX,
-                            cellMinX + cellSize
-                        );
-
-                    float closestZ =
-                        Mathf.Clamp(
-                            playerPosition.z,
-                            cellMinZ,
-                            cellMinZ + cellSize
-                        );
-
-                    float dx =
-                        playerPosition.x - closestX;
-
-                    float dz =
-                        playerPosition.z - closestZ;
-
-                    if (dx * dx + dz * dz <=
-                        radius * radius)
-                    {
-                        killerEnemy = enemy;
-                        return true;
-                    }
+                if ((playerPoint - closestPoint).sqrMagnitude <=
+                    radiusSqr)
+                {
+                    killerEnemy = enemy;
+                    return true;
                 }
             }
         }

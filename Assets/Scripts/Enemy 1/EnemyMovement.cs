@@ -63,38 +63,104 @@ public class EnemyMovement : MonoBehaviour
     /// Sends the enemy to the nearest NavMesh point around worldPosition.
     /// Returns false if no NavMesh point was found or the agent is not on the NavMesh.
     /// </summary>
-    public bool SetDestination(Vector3 worldPosition)
+    /// 
+    public bool SetDestination(
+    Vector3 worldPosition)
     {
-        if (!agent.isOnNavMesh)
-            return false;
-
-        float thresholdSqr = destinationUpdateThreshold * destinationUpdateThreshold;
-
-        if (hasDestination &&
-            (worldPosition - lastDestination).sqrMagnitude < thresholdSqr)
+        if (!agent.isOnNavMesh &&
+            !TryRecoverToNavMesh())
         {
-            return true;
+            hasDestination = false;
+            return false;
         }
 
-        // Custom agent types must be sampled with a filter,
-        // otherwise Unity samples the default (Humanoid) agent type.
-        NavMeshQueryFilter filter = new NavMeshQueryFilter
-        {
-            agentTypeID = agent.agentTypeID,
-            areaMask = agent.areaMask
-        };
+        float thresholdSqr =
+            destinationUpdateThreshold *
+            destinationUpdateThreshold;
 
-        if (!NavMesh.SamplePosition(worldPosition, out NavMeshHit hit, samplePositionRange, filter))
+        bool sameDestination =
+            hasDestination &&
+            (worldPosition - lastDestination)
+            .sqrMagnitude < thresholdSqr;
+
+        if (sameDestination &&
+            !agent.isStopped)
+        {
+            if (agent.pathPending)
+            {
+                return true;
+            }
+
+            if (agent.hasPath &&
+                agent.pathStatus ==
+                NavMeshPathStatus.PathComplete)
+            {
+                return true;
+            }
+        }
+
+        NavMeshQueryFilter filter =
+            new NavMeshQueryFilter
+            {
+                agentTypeID = agent.agentTypeID,
+                areaMask = agent.areaMask
+            };
+
+        if (!NavMesh.SamplePosition(
+                worldPosition,
+                out NavMeshHit hit,
+                samplePositionRange,
+                filter))
+        {
+            hasDestination = false;
             return false;
+        }
 
         agent.isStopped = false;
 
         if (!agent.SetDestination(hit.position))
+        {
+            hasDestination = false;
             return false;
+        }
 
         lastDestination = worldPosition;
         hasDestination = true;
+
         return true;
+    }
+
+    private bool TryRecoverToNavMesh()
+    {
+        NavMeshQueryFilter filter =
+            new NavMeshQueryFilter
+            {
+                agentTypeID = agent.agentTypeID,
+                areaMask = agent.areaMask
+            };
+
+        float recoveryRange =
+            Mathf.Max(
+                samplePositionRange * 2f,
+                agent.radius * 2f
+            );
+
+        if (!NavMesh.SamplePosition(
+                transform.position,
+                out NavMeshHit hit,
+                recoveryRange,
+                filter))
+        {
+            return false;
+        }
+
+        if (!agent.Warp(hit.position))
+        {
+            return false;
+        }
+
+        hasDestination = false;
+        return agent.isOnNavMesh;
     }
 
     public void Stop()

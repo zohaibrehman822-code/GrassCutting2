@@ -66,15 +66,16 @@ public class UIManager : MonoBehaviour
         {
             StopCoroutine(playerDiedCoroutine);
         }
-
+        
         playerDiedCoroutine = StartCoroutine(ShowPlayerDiedTextCoroutine());
     }
 
     private IEnumerator ShowPlayerDiedTextCoroutine()
     {
+        Debug.Log(" ** UI ** ");
         PlayerDiedText.gameObject.SetActive(true);
 
-        yield return new WaitForSeconds(1.5f);
+        yield return new WaitForSeconds(2.5f);
 
         PlayerDiedText.gameObject.SetActive(false);
 
@@ -92,6 +93,11 @@ public class UIManager : MonoBehaviour
         if (gameManager != null)
         {
             gameManager.RestartCurrentLevel();
+        }
+
+        if (GamePanel != null)
+        {
+            GamePanel.SetActive(true);
         }
     }
 }

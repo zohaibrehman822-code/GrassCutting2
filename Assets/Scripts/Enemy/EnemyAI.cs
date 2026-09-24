@@ -115,6 +115,8 @@ public class EnemyAI : MonoBehaviour
 
     [SerializeField] private GameObject killParticleEffect;
 
+    private PaperPlayerTerritory playerTerritory;
+
     public void SetSpawner(EnemySpawner enemySpawner)
     {
         spawner = enemySpawner;
@@ -378,10 +380,33 @@ public class EnemyAI : MonoBehaviour
 
     private void OnDestroy()
     {
+        bool destroyedWithoutDie =
+            isAlive;
+
+        isAlive = false;
+
         if (territoryManager != null)
         {
-            territoryManager.OnInitialized -= HandleTerritoryInitialized;
+            territoryManager.OnInitialized -=
+                HandleTerritoryInitialized;
+
             territoryManager.RemoveEnemy(this);
+        }
+
+        if (spawner != null)
+        {
+            spawner.NotifyEnemyDied(
+                gameObject
+            );
+        }
+
+        if (destroyedWithoutDie &&
+            Application.isPlaying &&
+            gameObject.scene.IsValid() &&
+            gameObject.scene.isLoaded &&
+            territoryManager != null)
+        {
+            territoryManager.CheckWinCondition();
         }
     }
 
@@ -421,15 +446,51 @@ public class EnemyAI : MonoBehaviour
 
     private void Update()
     {
-        if (!isAlive || !setupDone) return;
+        if (!isAlive)
+        {
+            return;
+        }
 
-        if (Time.time < nextDecisionTime) return;
-        nextDecisionTime = Time.time + decisionInterval;
+        if (!setupDone)
+        {
+            if (territoryManager != null &&
+                territoryManager.IsInitialized)
+            {
+                Setup();
+            }
 
-        outsideTerritory = !territoryManager.EnemyTouchesTerritory(
-            this,
-            territoryTouchRadius
-        );
+            return;
+        }
+
+        if (playerTerritory == null)
+        {
+            playerTerritory =
+                FindFirstObjectByType<PaperPlayerTerritory>();
+        }
+
+        if (playerTerritory != null &&
+            playerTerritory.IsPointOnActiveTrail(
+                transform.position,
+                territoryTouchRadius
+            ))
+        {
+            playerTerritory.OnPlayerDied();
+            return;
+        }
+
+        if (Time.time < nextDecisionTime)
+        {
+            return;
+        }
+
+        nextDecisionTime =
+            Time.time + decisionInterval;
+
+        outsideTerritory =
+            !territoryManager.EnemyTouchesTerritory(
+                this,
+                territoryTouchRadius
+            );
 
         UpdateTrail();
 
@@ -534,20 +595,67 @@ public class EnemyAI : MonoBehaviour
     private void BeginReturning()
     {
         ChangeState(State.Returning);
-        movement.SetDestination(homePosition);
+
+        stateEndTime =
+            Time.time + maxExpandSeconds;
+
+        if (!territoryManager
+            .TryGetNearestEnemyTerritoryPosition(
+                this,
+                transform.position,
+                out Vector3 returnPosition))
+        {
+            Die();
+            return;
+        }
+
+        homePosition = returnPosition;
+
+        movement.SetDestination(
+            homePosition
+        );
     }
 
     private void UpdateReturning()
     {
-        // Back inside territory: done.
         if (!outsideTerritory)
         {
             EnterResting();
             return;
         }
 
-        // Ignored by EnemyMovement if the destination did not change.
-        movement.SetDestination(homePosition);
+        if (!territoryManager
+            .TryGetNearestEnemyTerritoryPosition(
+                this,
+                transform.position,
+                out Vector3 returnPosition))
+        {
+            Die();
+            return;
+        }
+
+        homePosition = returnPosition;
+
+        bool destinationAccepted =
+            movement.SetDestination(
+                homePosition
+            );
+
+        if (destinationAccepted)
+        {
+            return;
+        }
+
+        if (Time.time >= stateEndTime)
+        {
+            Debug.LogWarning(
+                $"{name}: Could not return to enemy territory. " +
+                "Removing the stuck enemy.",
+                this
+            );
+
+            Die();
+        }
     }
 
     // ---------------- Helpers ----------------
@@ -583,10 +691,17 @@ public class EnemyAI : MonoBehaviour
 
     public void Die()
     {
-        if (!isAlive) return;
+        if (!isAlive)
+        {
+            return;
+        }
 
         isAlive = false;
-        movement.Stop();
+
+        if (movement != null)
+        {
+            movement.Stop();
+        }
 
         if (territoryManager != null)
         {
@@ -595,36 +710,51 @@ public class EnemyAI : MonoBehaviour
 
         if (spawner != null)
         {
-            spawner.NotifyEnemyDied(gameObject);
+            spawner.NotifyEnemyDied(
+                gameObject
+            );
         }
 
-        Debug.Log(" ** Enemy Died ** ");
+        Debug.Log(
+            $"Enemy Died: {name}",
+            this
+        );
 
-        // Spawn kill particle at enemy's position
         if (killParticleEffect != null)
         {
-            GameObject particle = Instantiate(
-                killParticleEffect,
-                transform.position,
-                Quaternion.identity
-            );
+            GameObject particle =
+                Instantiate(
+                    killParticleEffect,
+                    transform.position,
+                    Quaternion.identity
+                );
 
-            // Destroy particle object after its duration
-            ParticleSystem ps = particle.GetComponent<ParticleSystem>();
+            ParticleSystem particleSystem =
+                particle.GetComponent<ParticleSystem>();
 
-            if (ps != null)
+            if (particleSystem != null)
             {
-                Destroy(particle, ps.main.duration + ps.main.startLifetime.constantMax);
+                ParticleSystem.MainModule main =
+                    particleSystem.main;
+
+                Destroy(
+                    particle,
+                    main.duration +
+                    main.startLifetime.constantMax
+                );
+            }
+            else
+            {
+                Destroy(particle, 2f);
             }
         }
-
-        UIManager.Instance.ShowPlayerDiedText();
 
         if (territoryManager != null)
         {
             territoryManager.CheckWinCondition();
         }
 
+        UIManager.Instance.ShowPlayerDiedText();
         Destroy(gameObject);
     }
 

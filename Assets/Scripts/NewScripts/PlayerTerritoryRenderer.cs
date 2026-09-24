@@ -581,80 +581,48 @@ public void Rebuild(
 
     private void UpdateGrowthAnimation()
     {
-        if (growingBlades.Count == 0 ||
-            Time.time <
-            nextGrowthUpdateTime)
+        if (growingBlades.Count == 0)
         {
             return;
         }
 
-        nextGrowthUpdateTime =
-            Time.time +
-            growthUpdateInterval;
+        float currentTime = Time.time;
 
-        float currentTime =
-            Time.time;
-
-        float safeDuration =
-            Mathf.Max(
-                0.1f,
-                growthDuration
-            );
-
-        for (int i = 0;
-             i < growingBlades.Count;
-             i++)
+        if (currentTime >= growthEndTime)
         {
-            GrowingBlade blade =
-                growingBlades[i];
+            FinishGrowth();
+            return;
+        }
 
-            if (currentTime <
-                blade.StartTime)
+        float safeDuration = Mathf.Max(0.1f, growthDuration);
+
+        for (int i = 0; i < growingBlades.Count; i++)
+        {
+            GrowingBlade blade = growingBlades[i];
+
+            if (currentTime < blade.StartTime)
             {
                 continue;
             }
 
-            float progress =
-                Mathf.Clamp01(
-                    (currentTime -
-                     blade.StartTime) /
-                    safeDuration
-                );
+            float progress = Mathf.Clamp01(
+                (currentTime - blade.StartTime) / safeDuration
+            );
 
-            float evaluatedProgress =
-                growthCurve != null
-                    ? growthCurve.Evaluate(
-                        progress
-                    )
-                    : Mathf.SmoothStep(
-                        0f,
-                        1f,
-                        progress
-                    );
+            float scaleProgress = growthCurve != null
+                ? growthCurve.Evaluate(progress)
+                : Mathf.SmoothStep(0f, 1f, progress);
 
-            evaluatedProgress =
-                Mathf.Clamp01(
-                    evaluatedProgress
-                );
-
-            Vector3 animatedScale =
-                blade.TargetScale *
-                evaluatedProgress;
+            scaleProgress = Mathf.Clamp01(scaleProgress);
 
             SetMatrix(
                 blade.MatrixIndex,
                 Matrix4x4.TRS(
                     blade.Position,
                     blade.Rotation,
-                    animatedScale
+                    blade.TargetScale * scaleProgress
                 )
             );
-        }
-
-        if (currentTime >=
-            growthEndTime)
-        {
-            FinishGrowth();
         }
     }
 

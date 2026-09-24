@@ -132,24 +132,84 @@ public class GrassCutter : MonoBehaviour
     public float GetEffectiveCutRadius()
     {
         float effectiveRadius =
-            cutRadius;
+            Mathf.Max(0.01f, cutRadius);
 
         if (includeColliderSize &&
             bladeCollider != null)
         {
-            Bounds bounds =
-                bladeCollider.bounds;
+            float colliderRadius = 0f;
 
-            float colliderRadius =
-                Mathf.Max(
-                    bounds.extents.x,
-                    bounds.extents.z
-                );
+            if (bladeCollider is BoxCollider boxCollider)
+            {
+                Vector3 scale =
+                    boxCollider.transform.lossyScale;
+
+                float halfWidth =
+                    Mathf.Abs(
+                        boxCollider.size.x *
+                        scale.x
+                    ) * 0.5f;
+
+                float halfDepth =
+                    Mathf.Abs(
+                        boxCollider.size.z *
+                        scale.z
+                    ) * 0.5f;
+
+                // Use the smaller horizontal dimension.
+                // This represents the cutter width without allowing
+                // its longer body dimension to widen diagonal cuts.
+                colliderRadius =
+                    Mathf.Min(
+                        halfWidth,
+                        halfDepth
+                    );
+            }
+            else if (bladeCollider is SphereCollider sphereCollider)
+            {
+                Vector3 scale =
+                    sphereCollider.transform.lossyScale;
+
+                colliderRadius =
+                    sphereCollider.radius *
+                    Mathf.Max(
+                        Mathf.Abs(scale.x),
+                        Mathf.Abs(scale.z)
+                    );
+            }
+            else
+            {
+                Bounds bounds =
+                    bladeCollider.bounds;
+
+                colliderRadius =
+                    Mathf.Min(
+                        bounds.extents.x,
+                        bounds.extents.z
+                    );
+            }
 
             effectiveRadius =
                 Mathf.Max(
-                    cutRadius,
+                    effectiveRadius,
                     colliderRadius
+                );
+        }
+
+        // Keep the physical cutting width inside the same
+        // logical width used by the territory grid.
+        if (grassGrid != null)
+        {
+            float territoryRadius =
+                Mathf.Max(
+                    0.01f,
+                    grassGrid.CellSize * 0.5f
+                );
+
+            effectiveRadius =
+                Mathf.Min(
+                    effectiveRadius,
+                    territoryRadius
                 );
         }
 
@@ -181,37 +241,17 @@ public class GrassCutter : MonoBehaviour
             return;
         }
 
-        nextCutTime = Time.time + cutInterval;
+        nextCutTime =
+            Time.time + cutInterval;
 
         Vector3 cutPosition =
             bladeCollider != null
                 ? bladeCollider.bounds.center
                 : transform.position;
 
-        float effectiveRadius = cutRadius;
-
-        if (includeColliderSize &&
-            bladeCollider != null)
-        {
-            Bounds bounds = bladeCollider.bounds;
-
-            float colliderRadius =
-                Mathf.Max(
-                    bounds.extents.x,
-                    bounds.extents.z
-                );
-
-            effectiveRadius =
-                Mathf.Max(
-                    cutRadius,
-                    colliderRadius
-                );
-        }
-
-        // Pass this cutter as the source.
         grassGrid.Cut(
             cutPosition,
-            effectiveRadius,
+            GetEffectiveCutRadius(),
             this
         );
     }

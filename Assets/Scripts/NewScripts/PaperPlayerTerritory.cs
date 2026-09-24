@@ -136,17 +136,11 @@ public class PaperPlayerTerritory : MonoBehaviour
                 territoryTouchRadius
             );
 
-        // Enemy-trail contact must be checked regardless of whether
-        // the player is currently inside or outside player territory.
         if (territoryManager.IsPlayerInsideEnemyTrail(
                 transform.position,
                 trailKillRadius,
                 out EnemyAI hitEnemy))
         {
-            Debug.Log(
-                "Enemy Died - Player hit the enemy's active trail"
-            );
-
             hitEnemy.Die();
         }
 
@@ -172,8 +166,52 @@ public class PaperPlayerTerritory : MonoBehaviour
         }
     }
 
-    private void OnPlayerDied()
+    public bool IsPointOnActiveTrail(Vector3 worldPosition, float radius)
     {
+        if (!enabled || !outsideTerritory || trailPositions.Count == 0)
+        {
+            return false;
+        }
+
+        Vector2 point = new Vector2(worldPosition.x, worldPosition.z);
+        float radiusSqr = radius * radius;
+
+        for (int i = 0; i < trailPositions.Count; i++)
+        {
+            Vector3 startPosition = trailPositions[i];
+            Vector3 endPosition = i + 1 < trailPositions.Count
+                ? trailPositions[i + 1]
+                : transform.position;
+
+            Vector2 start = new Vector2(startPosition.x, startPosition.z);
+            Vector2 end = new Vector2(endPosition.x, endPosition.z);
+            Vector2 segment = end - start;
+
+            float fraction = segment.sqrMagnitude > 0.000001f
+                ? Mathf.Clamp01(
+                    Vector2.Dot(point - start, segment) / segment.sqrMagnitude
+                  )
+                : 0f;
+
+            Vector2 closestPoint = start + segment * fraction;
+
+            if ((point - closestPoint).sqrMagnitude <= radiusSqr)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void OnPlayerDied()
+    {
+        if (!enabled)
+        {
+            return;
+        }
+
+        enabled = false;
         outsideTerritory = false;
         cutGrassPositions.Clear();
         ClearTrailVisuals();

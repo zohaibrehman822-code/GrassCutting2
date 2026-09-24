@@ -367,9 +367,9 @@ MonoBehaviour:
   cuttingEnabled: 1
   cutParticlePrefab: {fileID: 3895100406977161009, guid: 67b3087cca8c2b8419b0673448567bd3, type: 3}
   particlePoolSize: 25
-  particleOffset: {x: 0, y: 0.3, z: 0}
-  minimumForwardDistance: 0.31
-  forwardCone: 0.6
+  particleOffset: {x: 0, y: 0.6, z: 0}
+  minimumForwardDistance: 0.5
+  forwardCone: 0.9
   cutsPerFastParticle: 3
   cutsPerSlowParticle: 1
   slowMovementThreshold: 1
@@ -506,8 +506,8 @@ Transform:
   m_GameObject: {fileID: 6356919613643850049}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 3.4666667, y: 3.4666667, z: 3.4666667}
+  m_LocalPosition: {x: 0, y: 0, z: -0.169}
+  m_LocalScale: {x: 2.81, y: 2.81, z: 2.81}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 4087285830096937548}

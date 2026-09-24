@@ -121,12 +121,37 @@ public class TerritoryPercentage : MonoBehaviour
 
         if (spawner == null)
         {
+            ClearEnemyRows();
             return;
         }
 
         IReadOnlyList<GameObject> spawnedEnemies = spawner.SpawnedEnemies;
 
+        // Count alive enemies.
+        int aliveEnemyCount = 0;
+
+        for (int i = 0; i < spawnedEnemies.Count; i++)
+        {
+            if (spawnedEnemies[i] == null)
+                continue;
+
+            EnemyAI enemyAI = spawnedEnemies[i].GetComponent<EnemyAI>();
+
+            if (enemyAI != null && enemyAI.IsAlive)
+            {
+                aliveEnemyCount++;
+            }
+        }
+
+        // Only display enemy rows if there is more than 1 enemy.
+        if (aliveEnemyCount <= 1)
+        {
+            ClearEnemyRows();
+            return;
+        }
+
         staleKeys.Clear();
+
         foreach (var key in enemyRows.Keys)
         {
             staleKeys.Add(key);
@@ -134,35 +159,54 @@ public class TerritoryPercentage : MonoBehaviour
 
         for (int i = 0; i < spawnedEnemies.Count; i++)
         {
-            if (spawnedEnemies[i] == null) continue;
+            if (spawnedEnemies[i] == null)
+                continue;
 
             EnemyAI enemyAI = spawnedEnemies[i].GetComponent<EnemyAI>();
-            if (enemyAI == null || !enemyAI.IsAlive) continue;
+
+            if (enemyAI == null || !enemyAI.IsAlive)
+                continue;
 
             staleKeys.Remove(enemyAI);
 
             int enemyCells = territoryManager.GetEnemyTerritoryCount(enemyAI);
-            int enemyPercentage = Mathf.CeilToInt(enemyCells * 100f / totalCells);
+
+            int enemyPercentage = Mathf.CeilToInt(
+                enemyCells * 100f / totalCells
+            );
 
             if (!enemyRows.TryGetValue(enemyAI, out Text rowText))
             {
-                GameObject row = Instantiate(enemyRowPrefab, enemyListContainer);
+                GameObject row = Instantiate(
+                    enemyRowPrefab,
+                    enemyListContainer
+                );
+
                 rowText = row.GetComponentInChildren<Text>(true);
                 enemyRows[enemyAI] = rowText;
             }
 
             if (rowText != null)
             {
-                rowText.text = string.Format(enemyFormat, spawnedEnemies[i].name, enemyPercentage);
+                rowText.text = string.Format(
+                    enemyFormat,
+                    spawnedEnemies[i].name,
+                    enemyPercentage
+                );
             }
         }
 
         // Remove rows for enemies that died or were destroyed.
         for (int i = 0; i < staleKeys.Count; i++)
         {
-            if (enemyRows.TryGetValue(staleKeys[i], out Text rowText) && rowText != null)
+            if (enemyRows.TryGetValue(staleKeys[i], out Text rowText) &&
+                rowText != null)
             {
-                Destroy(rowText.transform.parent != null ? rowText.transform.parent.gameObject : rowText.gameObject);
+                GameObject rowObject = rowText.transform.parent != null
+                    ? rowText.transform.parent.gameObject
+                    : rowText.gameObject;
+
+                Destroy(rowObject);
             }
 
             enemyRows.Remove(staleKeys[i]);
