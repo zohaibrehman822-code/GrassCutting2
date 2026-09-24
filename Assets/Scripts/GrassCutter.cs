@@ -110,10 +110,13 @@ public class GrassCutter : MonoBehaviour
     [Header("Grass Collection UI")]
     [SerializeField] private GrassCollectUI grassCollectUI;
 
+    private EnemyMovement enemyMovement;
+
     private void Awake()
     {
         bladeCollider = GetComponent<Collider>();
         playerMovement = GetComponent<Movement>();
+        enemyMovement = GetComponent<EnemyMovement>();
 
         if (grassGrid == null)
         {
@@ -281,6 +284,10 @@ public class GrassCutter : MonoBehaviour
             movementDirection.y = 0f;
             moveStrength = movementDirection.magnitude;
         }
+        else if (enemyMovement != null)
+        {
+            moveStrength = enemyMovement.IsMoving ? 1f : 0f;
+        }
         else
         {
             Rigidbody rb = GetComponent<Rigidbody>();
@@ -314,17 +321,8 @@ public class GrassCutter : MonoBehaviour
 
         cutsSinceParticle = 0;
 
-        // Preserve the exact cut blade X/Z position.
         grassPosition.y += particleOffset.y;
-
         PlayCutParticle(grassPosition);
-
-        //if (GrassCollectUI.Instance != null)
-        //{
-        //    GrassCollectUI.Instance.ShowGrassCollected(
-        //        grassPosition
-        //    );
-        //}
     }
 
     private void TryPlayCutAudio()

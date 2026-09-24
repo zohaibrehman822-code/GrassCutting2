@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
+using static UnityEngine.UIElements.UxmlAttributeDescription;
 
 public class EnemySpawner : MonoBehaviour
 {
@@ -29,7 +32,8 @@ public class EnemySpawner : MonoBehaviour
         SpawnAll();
     }
 
-    public void SpawnAll()
+
+public void SpawnAll()
     {
         if (enemies == null || enemies.Length == 0) return;
 
@@ -38,9 +42,12 @@ public class EnemySpawner : MonoBehaviour
             if (spawnPoint.enemyPrefab == null || spawnPoint.spawnPoint == null)
                 continue;
 
+            Vector3 spawnPosition = spawnPoint.spawnPoint.position;
+            spawnPosition.y = 0.64f;
+
             GameObject enemy = Instantiate(
                 spawnPoint.enemyPrefab,
-                spawnPoint.spawnPoint.position,
+                spawnPosition,
                 spawnPoint.spawnPoint.rotation
             );
 
