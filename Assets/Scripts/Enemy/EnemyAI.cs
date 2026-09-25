@@ -12,6 +12,13 @@ public class EnemyAI : MonoBehaviour
         Returning
     }
 
+    private enum DifficultyLevel
+    {
+        Easy,
+        Normal,
+        Hard
+    }
+
     [Header("References")]
     [Tooltip("Leave empty to find it automatically.")]
     [SerializeField] private TerritoryManager territoryManager;
@@ -30,6 +37,11 @@ public class EnemyAI : MonoBehaviour
     [Tooltip("The AI thinks this often, not every frame.")]
     [Min(0.05f)]
     [SerializeField] private float decisionInterval = 0.1f;
+
+    [Header("Difficulty")]
+    [SerializeField] private DifficultyLevel difficulty = DifficultyLevel.Normal;
+
+    private int focusedExpansionAttempts = 8;
 
     [Tooltip("Seconds the enemy stays home before leaving (random between X and Y).")]
     [SerializeField] private Vector2 restTimeRange = new Vector2(1f, 3f);
@@ -422,15 +434,24 @@ public class EnemyAI : MonoBehaviour
     {
         if (setupDone) return;
 
+        ApplyDifficultySettings();
+
         homePosition = transform.position;
 
         if (territoryRenderer != null)
         {
-            territoryManager.RegisterEnemyRenderer(this, territoryRenderer);
+            territoryManager.RegisterEnemyRenderer(
+                this,
+                territoryRenderer
+            );
         }
         else
         {
-            Debug.LogWarning("EnemyAI: No PlayerTerritoryRenderer found. Enemy territory will be invisible.", this);
+            Debug.LogWarning(
+                "EnemyAI: No PlayerTerritoryRenderer found. " +
+                "Enemy territory will be invisible.",
+                this
+            );
         }
 
         territoryManager.CreateEnemyStartingTerritory(
@@ -564,7 +585,8 @@ public class EnemyAI : MonoBehaviour
         {
             Vector3 forward;
 
-            if (hasPlayer && attempt < 8)
+            if (hasPlayer &&
+                attempt < focusedExpansionAttempts)
             {
                 forward =
                     Quaternion.Euler(
@@ -661,8 +683,10 @@ public class EnemyAI : MonoBehaviour
                     );
 
                 score -=
-                    Vector2.Distance(candidatePoint, playerPoint)
-                    * 0.12f;
+                    Vector2.Distance(
+                        candidatePoint,
+                        playerPoint
+                    ) * 0.12f;
             }
 
             if (score > bestScore)
@@ -1007,5 +1031,82 @@ public class EnemyAI : MonoBehaviour
         }
 
         wasOutside = outsideTerritory;
+    }
+
+    private void ApplyDifficultySettings()
+    {
+        float speedMultiplier;
+        float restMultiplier;
+        float routeMultiplier;
+
+        switch (difficulty)
+        {
+            case DifficultyLevel.Easy:
+                speedMultiplier = 0.85f;
+                restMultiplier = 1.6f;
+                routeMultiplier = 0.85f;
+                focusedExpansionAttempts = 4;
+                break;
+
+            case DifficultyLevel.Hard:
+                speedMultiplier = 1.15f;
+                restMultiplier = 0.7f;
+                routeMultiplier = 1.1f;
+                focusedExpansionAttempts = 10;
+                break;
+
+            default:
+                speedMultiplier = 1f;
+                restMultiplier = 1f;
+                routeMultiplier = 1f;
+                focusedExpansionAttempts = 8;
+                break;
+        }
+
+        movement.SetSpeed(
+            movement.MoveSpeed * speedMultiplier
+        );
+
+        restTimeRange *= restMultiplier;
+        forwardDistanceRange *= routeMultiplier;
+        sideDistanceRange *= routeMultiplier;
+    }
+
+    public void MoveOutsidePlayerTerritory()
+    {
+        if (!isAlive ||
+            !setupDone ||
+            territoryManager == null ||
+            movement == null ||
+            !territoryManager.IsInsideTerritory(transform.position))
+        {
+            return;
+        }
+
+        if (!territoryManager.TryGetNearestEnemyTerritoryPosition(
+                this,
+                transform.position,
+                out Vector3 returnPosition) ||
+            !movement.TryWarpTo(returnPosition) ||
+            territoryManager.IsInsideTerritory(transform.position))
+        {
+            Debug.LogWarning(
+                $"{name}: No safe NavMesh position was found in its own territory.",
+                this
+            );
+            Die();
+            return;
+        }
+
+        territoryManager.CancelEnemyTrail(this);
+        ClearCutGrassTrail();
+
+        outsideTerritory = false;
+        wasOutside = false;
+        homePosition = transform.position;
+        lastCutGrassTrailPosition = transform.position;
+
+        movement.Stop();
+        EnterResting();
     }
 }

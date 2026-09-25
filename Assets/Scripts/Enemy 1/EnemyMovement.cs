@@ -202,4 +202,39 @@ public class EnemyMovement : MonoBehaviour
         wasMoving = moving;
         rotateObject.SetMoving(moving);
     }
+
+    public bool TryWarpTo(Vector3 worldPosition)
+    {
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
+        {
+            agentTypeID = agent.agentTypeID,
+            areaMask = agent.areaMask
+        };
+
+        if (!NavMesh.SamplePosition(
+                worldPosition,
+                out NavMeshHit hit,
+                samplePositionRange,
+                filter))
+        {
+            return false;
+        }
+
+        if (!agent.Warp(hit.position))
+        {
+            return false;
+        }
+
+        if (!agent.isOnNavMesh)
+        {
+            return false;
+        }
+
+        agent.ResetPath();
+        hasDestination = false;
+        wasMoving = false;
+        rotateObject.SetMoving(false);
+
+        return true;
+    }
 }

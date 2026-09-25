@@ -30,6 +30,15 @@ public class TerritoryManager : MonoBehaviour
 
     private bool initialized;
 
+    /// <summary>
+    /// Fires whenever the PLAYER's owned territory changes — captured,
+    /// lost to an enemy, or gained from a defeated enemy. Boundary/wall
+    /// systems (or anything else that needs to react to territory shape
+    /// changes) subscribe to this instead of polling every frame.
+    /// </summary>
+    public event System.Action OnPlayerTerritoryChanged;
+
+
     private readonly HashSet<Vector2Int> blocked = new HashSet<Vector2Int>();
     private readonly HashSet<Vector2Int> outside = new HashSet<Vector2Int>();
     private readonly Queue<Vector2Int> captureQueue = new Queue<Vector2Int>();
@@ -63,6 +72,9 @@ public class TerritoryManager : MonoBehaviour
     //[SerializeField] private List<EnemyTerritoryRenderer> enemyTerritoryRenderers = new List<EnemyTerritoryRenderer>();
 
     [SerializeField] private EnemySpawner enemySpawner;
+
+    private readonly HashSet<Vector2Int> wallProtectedCells =
+    new HashSet<Vector2Int>();
 
     public EnemySpawner EnemySpawner
     {
@@ -357,13 +369,14 @@ public class TerritoryManager : MonoBehaviour
 
     private void CaptureEnclosedArea()
     {
+        RefreshWallProtectedCells();
+
         HashSet<Vector2Int> previousTerritory =
             new HashSet<Vector2Int>(ownedCells);
 
         blocked.Clear();
         blocked.UnionWith(previousTerritory);
 
-        // The player's actual grid trail forms the capture boundary.
         foreach (Vector2Int cell in trail)
         {
             blocked.Add(cell);
@@ -394,8 +407,6 @@ public class TerritoryManager : MonoBehaviour
             }
         }
 
-        // Capture only cells enclosed by the previous territory
-        // and the player's logical trail.
         for (int x = minCell.x; x <= maxCell.x; x++)
         {
             for (int z = minCell.y; z <= maxCell.y; z++)
@@ -404,7 +415,8 @@ public class TerritoryManager : MonoBehaviour
 
                 if (previousTerritory.Contains(cell) ||
                     trailCells.Contains(cell) ||
-                    outside.Contains(cell))
+                    outside.Contains(cell) ||
+                    wallProtectedCells.Contains(cell))
                 {
                     continue;
                 }
@@ -416,10 +428,10 @@ public class TerritoryManager : MonoBehaviour
             }
         }
 
-        // The trail itself becomes territory.
         foreach (Vector2Int cell in trail)
         {
-            if (ownedCells.Add(cell))
+            if (!wallProtectedCells.Contains(cell) &&
+                ownedCells.Add(cell))
             {
                 newlyCapturedCells.Add(cell);
             }
@@ -434,6 +446,11 @@ public class TerritoryManager : MonoBehaviour
             newlyCapturedCells.Count > 0)
         {
             grassGrid.CutCells(newlyCapturedCells);
+        }
+
+        if (newlyCapturedCells.Count > 0)
+        {
+            OnPlayerTerritoryChanged?.Invoke();
         }
     }
 
@@ -832,17 +849,20 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
-
     private int CaptureEnemyEnclosedArea(
     EnemyAI enemy,
     List<Vector2Int> enemyTrail,
     HashSet<Vector2Int> enemyTrailCellsSet)
     {
-        if (!enemyTerritories.TryGetValue(enemy, out HashSet<Vector2Int> territory))
+        if (!enemyTerritories.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int> territory))
+        {
             return 0;
+        }
 
-        // Only the enemy's OWN land and trail act as walls.
-        // Player land and other enemies' land count as open ground.
+        RefreshWallProtectedCells();
+
         blocked.Clear();
         blocked.UnionWith(territory);
         blocked.UnionWith(enemyTrailCellsSet);
@@ -861,31 +881,42 @@ public class TerritoryManager : MonoBehaviour
             {
                 Vector2Int next = current + Directions[i];
 
-                if (!IsInsideBounds(next) || blocked.Contains(next) || !outside.Add(next))
+                if (!IsInsideBounds(next) ||
+                    blocked.Contains(next) ||
+                    !outside.Add(next))
+                {
                     continue;
+                }
 
                 captureQueue.Enqueue(next);
             }
         }
 
-        // Everything the flood fill could not reach is enclosed.
         for (int x = minCell.x; x <= maxCell.x; x++)
         {
             for (int z = minCell.y; z <= maxCell.y; z++)
             {
                 Vector2Int cell = new Vector2Int(x, z);
 
-                if (blocked.Contains(cell) || outside.Contains(cell))
+                if (blocked.Contains(cell) ||
+                    outside.Contains(cell) ||
+                    wallProtectedCells.Contains(cell))
+                {
                     continue;
+                }
 
                 newlyCapturedCells.Add(cell);
             }
         }
 
-        // The trail itself becomes territory.
         for (int i = 0; i < enemyTrail.Count; i++)
         {
-            newlyCapturedCells.Add(enemyTrail[i]);
+            Vector2Int cell = enemyTrail[i];
+
+            if (!wallProtectedCells.Contains(cell))
+            {
+                newlyCapturedCells.Add(cell);
+            }
         }
 
         int capturedCount = newlyCapturedCells.Count;
@@ -1135,7 +1166,7 @@ public class TerritoryManager : MonoBehaviour
     }
 
     public void RemoveEnemy(
-    EnemyAI enemy)
+EnemyAI enemy)
     {
         if (enemy == null)
         {
@@ -1194,6 +1225,11 @@ public class TerritoryManager : MonoBehaviour
             territoryRenderer.RebuildAll(
                 ownedCells
             );
+        }
+
+        if (transferredTerritory)
+        {
+            OnPlayerTerritoryChanged?.Invoke();
         }
     }
 
@@ -1325,6 +1361,8 @@ public class TerritoryManager : MonoBehaviour
                 {
                     territoryRenderer.RebuildAll(ownedCells);
                 }
+
+                OnPlayerTerritoryChanged?.Invoke();
             }
         }
 
@@ -1361,5 +1399,106 @@ public class TerritoryManager : MonoBehaviour
             return cells.Count;
 
         return 0;
+    }
+
+    public void CancelEnemyTrail(EnemyAI enemy)
+    {
+        if (enemy == null)
+        {
+            return;
+        }
+
+        enemyTrails.Remove(enemy);
+        enemyTrailCells.Remove(enemy);
+        enemyTrailWorldPositions.Remove(enemy);
+
+        if (territoryRenderer != null)
+        {
+            territoryRenderer.RebuildAll(ownedCells);
+        }
+    }
+    private void RefreshWallProtectedCells()
+    {
+        wallProtectedCells.Clear();
+
+        PlayerTerritoryBoundary boundary =
+            GetComponentInParent<PlayerTerritoryBoundary>();
+
+        if (boundary == null || !boundary.IsActive)
+        {
+            return;
+        }
+
+        outside.Clear();
+        captureQueue.Clear();
+
+        for (int x = minCell.x; x <= maxCell.x; x++)
+        {
+            Vector2Int bottom = new Vector2Int(x, minCell.y);
+            if (!boundary.BlocksCaptureStep(bottom, bottom + Vector2Int.down) &&
+                outside.Add(bottom))
+            {
+                captureQueue.Enqueue(bottom);
+            }
+
+            Vector2Int top = new Vector2Int(x, maxCell.y);
+            if (!boundary.BlocksCaptureStep(top, top + Vector2Int.up) &&
+                outside.Add(top))
+            {
+                captureQueue.Enqueue(top);
+            }
+        }
+
+        for (int z = minCell.y; z <= maxCell.y; z++)
+        {
+            Vector2Int left = new Vector2Int(minCell.x, z);
+            if (!boundary.BlocksCaptureStep(left, left + Vector2Int.left) &&
+                outside.Add(left))
+            {
+                captureQueue.Enqueue(left);
+            }
+
+            Vector2Int right = new Vector2Int(maxCell.x, z);
+            if (!boundary.BlocksCaptureStep(right, right + Vector2Int.right) &&
+                outside.Add(right))
+            {
+                captureQueue.Enqueue(right);
+            }
+        }
+
+        while (captureQueue.Count > 0)
+        {
+            Vector2Int current = captureQueue.Dequeue();
+
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                Vector2Int next = current + Directions[i];
+
+                if (!IsInsideBounds(next) ||
+                    boundary.BlocksCaptureStep(current, next) ||
+                    !outside.Add(next))
+                {
+                    continue;
+                }
+
+                captureQueue.Enqueue(next);
+            }
+        }
+
+        for (int x = minCell.x; x <= maxCell.x; x++)
+        {
+            for (int z = minCell.y; z <= maxCell.y; z++)
+            {
+                Vector2Int cell = new Vector2Int(x, z);
+
+                if (!outside.Contains(cell))
+                {
+                    wallProtectedCells.Add(cell);
+                }
+            }
+        }
+
+        outside.Clear();
+        captureQueue.Clear();
     }
 }

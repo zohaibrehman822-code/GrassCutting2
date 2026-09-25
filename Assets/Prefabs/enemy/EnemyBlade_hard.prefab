@@ -19,7 +19,7 @@ GameObject:
   - component: {fileID: 2463478226810783435}
   - component: {fileID: 6070951890555197338}
   m_Layer: 0
-  m_Name: EnemyBlade
+  m_Name: EnemyBlade_hard
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -253,6 +253,7 @@ MonoBehaviour:
   startingHeight: 3
   territoryTouchRadius: 0.15
   decisionInterval: 0.1
+  difficulty: 2
   restTimeRange: {x: 1, y: 5}
   restWanderRadius: 0.5
   forwardDistanceRange: {x: 2.5, y: 5}

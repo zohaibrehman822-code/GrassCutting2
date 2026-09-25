@@ -42,7 +42,11 @@ public class UIManager : MonoBehaviour
         if (winningPanel != null)
         {
             winningPanel.SetActive(true);
-            GamePanel.SetActive(false);
+
+            if (GamePanel != null)
+            {
+                GamePanel.SetActive(false);
+            }
         }
     }
 
@@ -51,28 +55,31 @@ public class UIManager : MonoBehaviour
         if (failPanel != null)
         {
             failPanel.SetActive(true);
-            GamePanel.SetActive(false);
+
+            if (GamePanel != null)
+            {
+                GamePanel.SetActive(false);
+            }
         }
     }
 
-    // Shows "Player Died" text for 2 seconds.
     public void ShowPlayerDiedText()
     {
         if (PlayerDiedText == null)
             return;
 
-        // Stop the previous timer if the function is called again.
         if (playerDiedCoroutine != null)
         {
             StopCoroutine(playerDiedCoroutine);
         }
-        
+
         playerDiedCoroutine = StartCoroutine(ShowPlayerDiedTextCoroutine());
     }
 
     private IEnumerator ShowPlayerDiedTextCoroutine()
     {
         Debug.Log(" ** UI ** ");
+
         PlayerDiedText.gameObject.SetActive(true);
 
         yield return new WaitForSeconds(2.5f);
@@ -82,7 +89,6 @@ public class UIManager : MonoBehaviour
         playerDiedCoroutine = null;
     }
 
-    // Wire this to the Fail Panel's Restart button (OnClick).
     public void OnRestartButtonPressed()
     {
         if (failPanel != null)
@@ -99,5 +105,23 @@ public class UIManager : MonoBehaviour
         {
             GamePanel.SetActive(true);
         }
+    }
+
+    public void ActivatePlayerBoundary()
+    {
+        Debug.Log("Boundary Function Called");
+
+        PlayerTerritoryBoundary boundary =
+            FindObjectOfType<PlayerTerritoryBoundary>();
+
+        if (boundary == null)
+        {
+            Debug.LogError("PlayerTerritoryBoundary not found on the active Level.");
+            return;
+        }
+
+        boundary.ActivateBoundary();
+
+        Debug.Log("Player Boundary Activated");
     }
 }
