@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -69,6 +70,13 @@ public class GrassCutter : MonoBehaviour
     [SerializeField]
     private float cleanupPadding = 0.1f;
 
+    private TerritoryManager territoryManager;
+    private EnemyAI enemyAI;
+    private float nextOwnTerritoryParticleTime;
+
+    public GameObject CapturedTerritoryParticlePrefab =>
+        capturedTerritoryParticlePrefab;
+
     private sealed class PooledParticle
     {
         public GameObject Root;
@@ -121,12 +129,14 @@ public class GrassCutter : MonoBehaviour
         bladeCollider = GetComponent<Collider>();
         playerMovement = GetComponent<Movement>();
         enemyMovement = GetComponent<EnemyMovement>();
+        enemyAI = GetComponent<EnemyAI>();
 
         if (grassGrid == null)
         {
-            grassGrid =
-                FindFirstObjectByType<GrassCutGrid>();
+            grassGrid = FindFirstObjectByType<GrassCutGrid>();
         }
+
+        territoryManager = FindFirstObjectByType<TerritoryManager>();
 
         if (audioSource == null)
         {
@@ -248,8 +258,7 @@ public class GrassCutter : MonoBehaviour
             return;
         }
 
-        nextCutTime =
-            Time.time + cutInterval;
+        nextCutTime = Time.time + cutInterval;
 
         Vector3 cutPosition =
             bladeCollider != null
@@ -261,6 +270,48 @@ public class GrassCutter : MonoBehaviour
             GetEffectiveCutRadius(),
             this
         );
+
+        if (territoryManager == null ||
+            Time.time < nextOwnTerritoryParticleTime)
+        {
+            return;
+        }
+
+        bool moving = false;
+        bool onOwnTerritory = false;
+
+        if (playerMovement != null)
+        {
+            Vector3 direction = playerMovement.CurrentMoveDirection;
+            direction.y = 0f;
+
+            moving = direction.sqrMagnitude > 0.0004f;
+            onOwnTerritory =
+                territoryManager.IsInsideTerritory(cutPosition);
+        }
+        else if (enemyMovement != null && enemyAI != null)
+        {
+            moving = enemyMovement.IsMoving;
+            onOwnTerritory =
+                territoryManager.EnemyTouchesTerritory(
+                    enemyAI,
+                    0.01f
+                );
+        }
+
+        if (!moving || !onOwnTerritory)
+        {
+            return;
+        }
+
+        nextOwnTerritoryParticleTime =
+            Time.time +
+            cutInterval * Mathf.Max(1, cutsPerFastParticle);
+
+        Vector3 effectPosition = cutPosition;
+        effectPosition.y = territoryManager.GroundY;
+
+        PlayCapturedTerritoryParticle(effectPosition);
     }
 
     private void OnGrassWasCut(Vector3 grassPosition)
@@ -444,20 +495,33 @@ public class GrassCutter : MonoBehaviour
     Vector3 worldPosition,
     bool capturedTerritory = false)
     {
-        PooledParticle[] pool = capturedTerritory
+        GameObject ownerParticlePrefab =
+            territoryManager != null
+                ? territoryManager.GetTerritoryCutParticlePrefab(
+                    worldPosition
+                )
+                : null;
+
+        bool useCapturedPool =
+            ownerParticlePrefab != null ||
+            (capturedTerritory && territoryManager == null);
+
+        PooledParticle[] pool = useCapturedPool
             ? capturedTerritoryParticlePool
             : particlePool;
 
-        GameObject prefab = capturedTerritory
+        GameObject poolPrefab = useCapturedPool
             ? capturedTerritoryParticlePrefab
             : cutParticlePrefab;
 
-        if (pool == null || pool.Length == 0 || prefab == null)
+        if (pool == null ||
+            pool.Length == 0 ||
+            poolPrefab == null)
         {
             return;
         }
 
-        int nextIndex = capturedTerritory
+        int nextIndex = useCapturedPool
             ? nextCapturedParticleIndex
             : nextParticleIndex;
 
@@ -482,7 +546,7 @@ public class GrassCutter : MonoBehaviour
             return;
         }
 
-        if (capturedTerritory)
+        if (useCapturedPool)
         {
             nextCapturedParticleIndex = nextIndex;
         }
@@ -493,20 +557,45 @@ public class GrassCutter : MonoBehaviour
 
         StopParticle(particle);
 
+        if (ownerParticlePrefab != null)
+        {
+            ParticleSystem sourceSystem =
+                ownerParticlePrefab
+                    .GetComponentInChildren<ParticleSystem>(true);
+
+            if (sourceSystem != null)
+            {
+                ParticleSystem.MainModule sourceMain =
+                    sourceSystem.main;
+
+                for (int i = 0; i < particle.Systems.Length; i++)
+                {
+                    if (particle.Systems[i] == null)
+                    {
+                        continue;
+                    }
+
+                    ParticleSystem.MainModule pooledMain =
+                        particle.Systems[i].main;
+
+                    pooledMain.startColor =
+                        sourceMain.startColor;
+                }
+            }
+        }
+
         particle.Root.transform.SetPositionAndRotation(
             worldPosition,
-            prefab.transform.rotation
+            poolPrefab.transform.rotation
         );
 
         particle.Root.SetActive(true);
 
         for (int i = 0; i < particle.Systems.Length; i++)
         {
-            ParticleSystem system = particle.Systems[i];
-
-            if (system != null)
+            if (particle.Systems[i] != null)
             {
-                system.Play(true);
+                particle.Systems[i].Play(true);
             }
         }
 

@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 8537564204613310329}
   - component: {fileID: 2284248454610644786}
   m_Layer: 1
-  m_Name: Green Particle
+  m_Name: WildGrassCutParticles
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -113,9 +113,9 @@ ParticleSystem:
         m_RotationOrder: 4
     startColor:
       serializedVersion: 2
-      minMaxState: 0
-      minColor: {r: 0.55, g: 1, b: 0.35, a: 1}
-      maxColor: {r: 0.30722892, g: 1, b: 0, a: 1}
+      minMaxState: 2
+      minColor: {r: 1, g: 0.94, b: 0.04, a: 1}
+      maxColor: {r: 1, g: 0.94, b: 0.04, a: 1}
       maxGradient:
         serializedVersion: 2
         key0: {r: 1, g: 1, b: 1, a: 1}

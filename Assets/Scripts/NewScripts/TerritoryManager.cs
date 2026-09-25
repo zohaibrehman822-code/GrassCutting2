@@ -67,6 +67,8 @@ public class TerritoryManager : MonoBehaviour
 
     public bool IsInitialized => initialized;
 
+    private GrassCutter playerTerritoryCutter;
+
 
 
     //[SerializeField] private List<EnemyTerritoryRenderer> enemyTerritoryRenderers = new List<EnemyTerritoryRenderer>();
@@ -724,6 +726,57 @@ public class TerritoryManager : MonoBehaviour
         enemyTrails[enemy].Add(cell);
     }
 
+    public GameObject GetTerritoryCutParticlePrefab(
+    Vector3 worldPosition)
+    {
+        if (!initialized)
+        {
+            return null;
+        }
+
+        Vector2Int cell = WorldToCell(worldPosition);
+
+        if (ownedCells.Contains(cell))
+        {
+            if (playerTerritoryCutter == null)
+            {
+                PaperPlayerTerritory player =
+                    FindFirstObjectByType<PaperPlayerTerritory>();
+
+                if (player != null)
+                {
+                    playerTerritoryCutter =
+                        player.GetComponentInParent<GrassCutter>();
+                }
+            }
+
+            return playerTerritoryCutter != null
+                ? playerTerritoryCutter
+                    .CapturedTerritoryParticlePrefab
+                : null;
+        }
+
+        foreach (var entry in enemyTerritories)
+        {
+            if (entry.Key == null ||
+                entry.Value == null ||
+                !entry.Value.Contains(cell))
+            {
+                continue;
+            }
+
+            GrassCutter ownerCutter =
+                entry.Key.GetComponent<GrassCutter>();
+
+            return ownerCutter != null
+                ? ownerCutter.CapturedTerritoryParticlePrefab
+                : null;
+        }
+
+        // No owner means wild grass.
+        return null;
+    }
+
     public void AddEnemyTrailPosition(EnemyAI enemy, Vector3 worldPosition)
     {
         if (!initialized || enemy == null)
@@ -900,7 +953,8 @@ public class TerritoryManager : MonoBehaviour
 
                 if (blocked.Contains(cell) ||
                     outside.Contains(cell) ||
-                    wallProtectedCells.Contains(cell))
+                    wallProtectedCells.Contains(cell) ||
+                    IsCellOwnedByAnotherEnemy(enemy, cell))
                 {
                     continue;
                 }
@@ -913,7 +967,8 @@ public class TerritoryManager : MonoBehaviour
         {
             Vector2Int cell = enemyTrail[i];
 
-            if (!wallProtectedCells.Contains(cell))
+            if (!wallProtectedCells.Contains(cell) &&
+                !IsCellOwnedByAnotherEnemy(enemy, cell))
             {
                 newlyCapturedCells.Add(cell);
             }
@@ -1165,8 +1220,7 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
-    public void RemoveEnemy(
-EnemyAI enemy)
+    public void RemoveEnemy(EnemyAI enemy)
     {
         if (enemy == null)
         {
@@ -1177,22 +1231,16 @@ EnemyAI enemy)
 
         if (enemyTerritories.TryGetValue(
                 enemy,
-                out HashSet<Vector2Int>
-                    defeatedTerritory))
+                out HashSet<Vector2Int> defeatedTerritory))
         {
             if (defeatedTerritory.Count > 0)
             {
-                ownedCells.UnionWith(
-                    defeatedTerritory
-                );
-
+                ownedCells.UnionWith(defeatedTerritory);
                 transferredTerritory = true;
 
                 if (grassGrid != null)
                 {
-                    grassGrid.CutCells(
-                        defeatedTerritory
-                    );
+                    grassGrid.CutCells(defeatedTerritory);
                 }
             }
 
@@ -1201,8 +1249,7 @@ EnemyAI enemy)
 
         if (enemyRenderers.TryGetValue(
                 enemy,
-                out PlayerTerritoryRenderer
-                    defeatedRenderer))
+                out PlayerTerritoryRenderer defeatedRenderer))
         {
             if (defeatedRenderer != null)
             {
@@ -1214,17 +1261,12 @@ EnemyAI enemy)
 
         enemyTrails.Remove(enemy);
         enemyTrailCells.Remove(enemy);
+        enemyTrailWorldPositions.Remove(enemy);
         enemyHomePositions.Remove(enemy);
 
-        if (territoryRenderer != null &&
-            transferredTerritory)
+        if (territoryRenderer != null && transferredTerritory)
         {
-            // Rebuild instead of append so any grass temporarily
-            // cut by this enemy is restored, while its former
-            // territory becomes player grass.
-            territoryRenderer.RebuildAll(
-                ownedCells
-            );
+            territoryRenderer.RebuildAll(ownedCells);
         }
 
         if (transferredTerritory)
@@ -1338,9 +1380,10 @@ EnemyAI enemy)
         return false;
     }
 
-    private void TakeCellsFromOthers(List<Vector2Int> cells, EnemyAI capturer)
+    private void TakeCellsFromOthers(
+    List<Vector2Int> cells,
+    EnemyAI capturer)
     {
-        // Enemy captured: the player may lose cells.
         if (capturer != null)
         {
             bool playerLost = false;
@@ -1364,31 +1407,41 @@ EnemyAI enemy)
 
                 OnPlayerTerritoryChanged?.Invoke();
             }
+
+            // Enemies may capture player territory, but never transfer
+            // another enemy's territory to themselves.
+            return;
         }
 
-        // Other enemies may lose cells too.
-        foreach (var kvp in enemyTerritories)
+        // Player capture can still take territory from any enemy.
+        foreach (var entry in enemyTerritories)
         {
-            if (kvp.Key == capturer) continue;
-
             bool lost = false;
 
             for (int i = 0; i < cells.Count; i++)
             {
-                if (kvp.Value.Remove(cells[i]))
+                if (entry.Value.Remove(cells[i]))
                 {
                     lost = true;
                 }
             }
 
-            if (!lost) continue;
+            if (!lost)
+            {
+                continue;
+            }
 
-            Debug.Log($"Territory taken from {(kvp.Key != null ? kvp.Key.name : "dead enemy")}");
+            Debug.Log(
+                $"Territory taken from " +
+                $"{(entry.Key != null ? entry.Key.name : "dead enemy")}"
+            );
 
-            if (enemyRenderers.TryGetValue(kvp.Key, out PlayerTerritoryRenderer renderer) &&
+            if (enemyRenderers.TryGetValue(
+                    entry.Key,
+                    out PlayerTerritoryRenderer renderer) &&
                 renderer != null)
             {
-                renderer.RebuildAll(kvp.Value);
+                renderer.RebuildAll(entry.Value);
             }
         }
     }
@@ -1500,5 +1553,22 @@ EnemyAI enemy)
 
         outside.Clear();
         captureQueue.Clear();
+    }
+
+    private bool IsCellOwnedByAnotherEnemy(
+        EnemyAI capturer,
+        Vector2Int cell)
+    {
+        foreach (var entry in enemyTerritories)
+        {
+            if (entry.Key != capturer &&
+                entry.Value != null &&
+                entry.Value.Contains(cell))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

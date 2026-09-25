@@ -942,34 +942,9 @@ public class EnemyAI : MonoBehaviour
                 lastCutGrassTrailPosition =
                     currentPosition;
 
-                if (territoryManager.IsInsideTerritory(
-                        currentPosition))
-                {
-                    float cutRadius =
-                        enemyCutter != null
-                            ? enemyCutter.GetEffectiveCutRadius()
-                            : territoryManager.CellSize * 0.5f;
-
-                    bool cutPlayerGrass =
-                        territoryManager.CutPlayerTerritoryGrass(
-                            currentPosition,
-                            cutRadius
-                        );
-
-                    if (cutPlayerGrass && enemyCutter != null)
-                    {
-                        Vector3 effectPosition =
-                            currentPosition;
-                        effectPosition.y =
-                            territoryManager.GroundY;
-
-                        enemyCutter.PlayCapturedTerritoryParticle(
-                            effectPosition
-                        );
-                    }
-
-                    AddCutGrassVisual(currentPosition);
-                }
+                CutCapturedGrassAlongTrail(
+                    currentPosition
+                );
             }
             else
             {
@@ -979,7 +954,8 @@ public class EnemyAI : MonoBehaviour
                 );
 
                 Vector3 movement =
-                    currentPosition - lastCutGrassTrailPosition;
+                    currentPosition -
+                    lastCutGrassTrailPosition;
 
                 movement.y = 0f;
 
@@ -987,40 +963,14 @@ public class EnemyAI : MonoBehaviour
                     cutGrassTrailPointDistance *
                     cutGrassTrailPointDistance;
 
-                if (movement.sqrMagnitude >=
-                    requiredDistanceSqr)
+                if (movement.sqrMagnitude >= requiredDistanceSqr)
                 {
                     lastCutGrassTrailPosition =
                         currentPosition;
 
-                    if (territoryManager.IsInsideTerritory(
-                            currentPosition))
-                    {
-                        float cutRadius =
-                            enemyCutter != null
-                                ? enemyCutter.GetEffectiveCutRadius()
-                                : territoryManager.CellSize * 0.5f;
-
-                        bool cutPlayerGrass =
-                            territoryManager.CutPlayerTerritoryGrass(
-                                currentPosition,
-                                cutRadius
-                            );
-
-                        if (cutPlayerGrass && enemyCutter != null)
-                        {
-                            Vector3 effectPosition =
-                                currentPosition;
-                            effectPosition.y =
-                                territoryManager.GroundY;
-
-                            enemyCutter.PlayCapturedTerritoryParticle(
-                                effectPosition
-                            );
-                        }
-
-                        AddCutGrassVisual(currentPosition);
-                    }
+                    CutCapturedGrassAlongTrail(
+                        currentPosition
+                    );
                 }
             }
         }
@@ -1031,6 +981,53 @@ public class EnemyAI : MonoBehaviour
         }
 
         wasOutside = outsideTerritory;
+    }
+
+    private void CutCapturedGrassAlongTrail(
+    Vector3 worldPosition)
+    {
+        bool onPlayerTerritory =
+            territoryManager.IsInsideTerritory(
+                worldPosition
+            );
+
+        bool onEnemyTerritory =
+            !onPlayerTerritory &&
+            territoryManager.IsInsideEnemyTerritory(
+                worldPosition
+            );
+
+        if (!onPlayerTerritory && !onEnemyTerritory)
+        {
+            return;
+        }
+
+        float cutRadius =
+            enemyCutter != null
+                ? enemyCutter.GetEffectiveCutRadius()
+                : territoryManager.CellSize * 0.5f;
+
+        bool cutGrass = onPlayerTerritory
+            ? territoryManager.CutPlayerTerritoryGrass(
+                worldPosition,
+                cutRadius
+            )
+            : territoryManager.CutEnemyTerritoryGrass(
+                worldPosition,
+                cutRadius
+            );
+
+        if (cutGrass && enemyCutter != null)
+        {
+            Vector3 effectPosition = worldPosition;
+            effectPosition.y = territoryManager.GroundY;
+
+            enemyCutter.PlayCapturedTerritoryParticle(
+                effectPosition
+            );
+        }
+
+        AddCutGrassVisual(worldPosition);
     }
 
     private void ApplyDifficultySettings()
