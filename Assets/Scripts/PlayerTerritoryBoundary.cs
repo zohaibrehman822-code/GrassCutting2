@@ -4,14 +4,9 @@ using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Builds and maintains a per-edge boundary around the PLAYER's owned
-/// territory (TerritoryManager.OwnedCells). This is an opt-in, level-specific
-/// feature: it does nothing until explicitly activated (added in a later step).
-///
-/// STEP 1: Border-edge detection + debug gizmo.
-/// STEP 2: Pooled wall mesh segments built from those edges.
-/// STEP 3 (this update): NavMeshObstacle (carve mode) added to each segment
-/// so NavMeshAgent-driven enemies cannot cross. Still no activation flow.
+/// Builds a pooled boundary around the current level's player territory.
+/// GameManager binds the level/player and controls power-up availability.
+/// Walls remain inactive until the player activates the power-up.
 /// </summary>
 public class PlayerTerritoryBoundary : MonoBehaviour
 {
@@ -38,7 +33,7 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     }
 
     [Header("References")]
-    [Tooltip("Leave empty to find it automatically.")]
+    [Tooltip("Assigned by GameManager, or found inside this level prefab.")]
     [SerializeField] private TerritoryManager territoryManager;
 
     [Header("Wall Appearance")]
@@ -78,6 +73,9 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     private static Mesh sharedCubeMesh;
 
     private bool isActive;
+    private bool isRebuilding;
+    private bool rebuildRequested;
+    private PaperPlayerTerritory playerTerritory;
 
     public bool IsActive => isActive;
 
@@ -91,9 +89,23 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     {
         if (territoryManager == null)
         {
-            territoryManager =
-                FindFirstObjectByType<TerritoryManager>();
+            territoryManager = transform.root
+                .GetComponentInChildren<TerritoryManager>(true);
         }
+    }
+
+    public void Initialize(
+        TerritoryManager manager,
+        PaperPlayerTerritory player)
+    {
+        DeactivateBoundary();
+        territoryManager = manager;
+        playerTerritory = player;
+    }
+
+    private void OnDisable()
+    {
+        DeactivateBoundary();
     }
 
     private WallSegment CreateWallSegment(int index)
@@ -140,17 +152,14 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
         EnsureWallPoolCapacity(currentEdges.Count);
 
-        PaperPlayerTerritory player =
-            FindFirstObjectByType<PaperPlayerTerritory>();
-
         Collider[] playerColliders = null;
 
-        if (player != null)
+        if (playerTerritory != null)
         {
-            Rigidbody playerBody = player.GetComponentInParent<Rigidbody>();
+            Rigidbody playerBody = playerTerritory.GetComponentInParent<Rigidbody>();
             playerColliders = playerBody != null
                 ? playerBody.GetComponentsInChildren<Collider>(true)
-                : player.GetComponentsInChildren<Collider>(true);
+                : playerTerritory.GetComponentsInChildren<Collider>(true);
         }
 
         float cellSize = territoryManager.CellSize;
@@ -218,9 +227,16 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
     private void OnDestroy()
     {
+        DeactivateBoundary();
+
         if (wallPoolRoot != null)
         {
             Destroy(wallPoolRoot.gameObject);
+        }
+
+        if (runtimeMaterial != null)
+        {
+            Destroy(runtimeMaterial);
         }
     }
 
@@ -477,13 +493,42 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
     public void RebuildBoundaryVisual()
     {
-        if (isActive)
+        if (!isActive || territoryManager == null || !territoryManager.IsInitialized)
         {
-            MoveEnemiesOutside();
+            return;
         }
 
-        RefreshBoundaryEdges();
-        BuildWallSegments();
+        // Moving an enemy can kill it and transfer its territory, causing
+        // another territory-change notification during this rebuild.
+        if (isRebuilding)
+        {
+            rebuildRequested = true;
+            return;
+        }
+
+        isRebuilding = true;
+
+        try
+        {
+            do
+            {
+                rebuildRequested = false;
+                MoveEnemiesOutside();
+
+                if (!isActive)
+                {
+                    break;
+                }
+
+                RefreshBoundaryEdges();
+                BuildWallSegments();
+            }
+            while (rebuildRequested);
+        }
+        finally
+        {
+            isRebuilding = false;
+        }
     }
 
     private void MoveEnemiesOutside()
@@ -493,11 +538,23 @@ public class PlayerTerritoryBoundary : MonoBehaviour
             return;
         }
 
-        EnemyAI[] enemies =
-            FindObjectsByType<EnemyAI>(FindObjectsSortMode.None);
+        EnemySpawner spawner = territoryManager.EnemySpawner;
 
-        foreach (EnemyAI enemy in enemies)
+        if (spawner == null)
         {
+            return;
+        }
+
+        // Use a snapshot because moving an enemy can call Die(), which
+        // removes it from the spawner's live list immediately.
+        List<GameObject> enemies = new List<GameObject>(spawner.SpawnedEnemies);
+
+        foreach (GameObject instance in enemies)
+        {
+            EnemyAI enemy = instance != null
+                ? instance.GetComponent<EnemyAI>()
+                : null;
+
             if (enemy != null &&
                 enemy.IsAlive &&
                 territoryManager.IsInsideTerritory(enemy.transform.position))
@@ -576,13 +633,16 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
         if (territoryManager == null)
         {
-            territoryManager = FindFirstObjectByType<TerritoryManager>();
+            territoryManager = transform.root
+                .GetComponentInChildren<TerritoryManager>(true);
         }
 
-        if (territoryManager == null)
+        if (!isActiveAndEnabled ||
+            territoryManager == null ||
+            !territoryManager.IsInitialized)
         {
             Debug.LogWarning(
-                "PlayerTerritoryBoundary: Cannot activate, no TerritoryManager found.",
+                "PlayerTerritoryBoundary: Cannot activate before this level is initialized.",
                 this
             );
             return;
@@ -601,12 +661,8 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     /// </summary>
     public void DeactivateBoundary()
     {
-        if (!isActive)
-        {
-            return;
-        }
-
         isActive = false;
+        rebuildRequested = false;
 
         if (territoryManager != null)
         {
@@ -615,8 +671,14 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
         for (int i = 0; i < wallPool.Count; i++)
         {
-            wallPool[i].Transform.gameObject.SetActive(false);
+            if (wallPool[i].Transform != null)
+            {
+                wallPool[i].Transform.gameObject.SetActive(false);
+            }
         }
+
+        currentEdges.Clear();
+        captureWallEdges.Clear();
     }
 
     private void HandleTerritoryChanged()

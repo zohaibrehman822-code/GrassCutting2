@@ -177,24 +177,19 @@ public class TerritoryManager : MonoBehaviour
         }
     }
 
-    public bool IsInsideEnemyTerritory(
-    Vector3 worldPosition)
+    public bool IsInsideEnemyTerritory(Vector3 worldPosition)
     {
         if (!initialized)
         {
             return false;
         }
 
-        Vector2Int cell =
-            WorldToCell(worldPosition);
+        Vector2Int cell = WorldToCell(worldPosition);
 
         foreach (var entry in enemyTerritories)
         {
-            HashSet<Vector2Int> territory =
-                entry.Value;
-
-            if (territory != null &&
-                territory.Contains(cell))
+            if (entry.Value != null &&
+                entry.Value.Contains(cell))
             {
                 return true;
             }
@@ -202,6 +197,27 @@ public class TerritoryManager : MonoBehaviour
 
         return false;
     }
+
+    public bool IsInsideEnemyTerritory(
+    EnemyAI enemy,
+    Vector3 worldPosition)
+    {
+        if (!initialized || enemy == null)
+        {
+            return false;
+        }
+
+        if (!enemyTerritories.TryGetValue(
+                enemy,
+                out HashSet<Vector2Int> territory) ||
+            territory == null)
+        {
+            return false;
+        }
+
+        return territory.Contains(WorldToCell(worldPosition));
+    }
+
 
     public bool CutEnemyTerritoryGrass(
     Vector3 worldPosition,

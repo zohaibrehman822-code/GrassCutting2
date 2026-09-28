@@ -52,6 +52,8 @@ public class PaperPlayerTerritory : MonoBehaviour
     private bool useSampledCutGrassTrail;
     private Vector3 lastTrailPosition;
 
+    private float distanceSinceCapturedTrailSample;
+
     public bool IsOutsideTerritory => outsideTerritory;
 
     [Header("Capture Contact")]
@@ -66,6 +68,11 @@ public class PaperPlayerTerritory : MonoBehaviour
     private GrassCutter playerCutter;
 
     public event System.Action OnPlayerDeath;
+
+    [Header("Captured Territory Trail Density")]
+    [Tooltip("Visual rows across the cut width. Wild-grass density is unchanged.")]
+    [SerializeField, Min(1)]
+    private int capturedTrailRows = 5;
 
     private void Awake()
     {
@@ -232,30 +239,19 @@ public class PaperPlayerTerritory : MonoBehaviour
         DrawCutGrassTrail();
     }
 
-    private void OnGrassWasCut(
-    Vector3 grassPosition)
+    private void OnGrassWasCut(Vector3 grassPosition)
     {
-        if (playerCutter != null &&
+        if (playerCutter == null ||
+            grassGrid == null ||
             grassGrid.LastCutSource != playerCutter)
         {
             return;
         }
 
-        // Keep real cut positions for the existing capture flow.
-        cutGrassPositions.Add(
-            grassPosition
-        );
+        cutGrassPositions.Add(grassPosition);
 
-        // Trails that began in enemy territory use logical trail
-        // samples instead. Do not add a second visual here.
-        if (useSampledCutGrassTrail)
-        {
-            return;
-        }
-
-        AddCutGrassVisual(
-            grassPosition
-        );
+        // Preserve one visual for every actual wild-grass blade cut.
+        AddCutGrassVisual(grassPosition);
     }
 
     private void AddCutGrassVisual(
@@ -364,59 +360,70 @@ public class PaperPlayerTerritory : MonoBehaviour
         outsideTerritory = true;
 
         trailPositions.Clear();
+        distanceSinceCapturedTrailSample = 0f;
 
         if (trailRenderer != null)
         {
             trailRenderer.positionCount = 0;
         }
 
-        lastTrailPosition =
-            transform.position;
+        lastTrailPosition = transform.position;
 
-        // A trail beginning in enemy territory cannot rely on
-        // GrassWasCut because its wild grass was already removed.
-        // Keep using sampled visuals until this trail completes.
-        useSampledCutGrassTrail =
-            territoryManager.IsInsideEnemyTerritory(
-                transform.position
-            );
+        // Wild-grass visuals remain driven by OnGrassWasCut.
+        // Captured-territory visuals are handled by AddVisualTrailPoint.
+        useSampledCutGrassTrail = false;
 
-        territoryManager.StartTrail(
-            transform.position
-        );
+        territoryManager.StartTrail(lastTrailPosition);
 
-        AddVisualTrailPoint(
-            transform.position
-        );
+        AddVisualTrailPoint(lastTrailPosition);
     }
 
     private void UpdateTrail()
     {
-        Vector3 currentPosition =
-            transform.position;
+        Vector3 currentPosition = transform.position;
+        Vector3 segmentStart = lastTrailPosition;
 
-        Vector3 movement =
-            currentPosition -
-            lastTrailPosition;
-
+        Vector3 movement = currentPosition - segmentStart;
         movement.y = 0f;
 
-        float requiredDistanceSqr =
-            trailPointDistance *
-            trailPointDistance;
+        float remainingDistance = movement.magnitude;
 
-        if (movement.sqrMagnitude <
-            requiredDistanceSqr)
+        if (remainingDistance <= 0.000001f)
         {
             return;
         }
 
-        lastTrailPosition =
-            currentPosition;
+        Vector3 direction = movement / remainingDistance;
+        float spacing = Mathf.Max(0.05f, trailPointDistance);
 
-        AddVisualTrailPoint(
-            currentPosition
+        distanceSinceCapturedTrailSample = Mathf.Clamp(
+            distanceSinceCapturedTrailSample,
+            0f,
+            spacing
         );
+
+        while (remainingDistance + 0.000001f >=
+               spacing - distanceSinceCapturedTrailSample)
+        {
+            float distanceToSample =
+                spacing - distanceSinceCapturedTrailSample;
+
+            segmentStart += direction * distanceToSample;
+
+            remainingDistance = Mathf.Max(
+                0f,
+                remainingDistance - distanceToSample
+            );
+
+            distanceSinceCapturedTrailSample = 0f;
+
+            // Your existing function adds extra rows only on enemy territory.
+            // It does not add extra cutted-grass visuals on wild grass.
+            AddVisualTrailPoint(segmentStart);
+        }
+
+        distanceSinceCapturedTrailSample += remainingDistance;
+        lastTrailPosition = currentPosition;
     }
 
     private void AddVisualTrailPoint(Vector3 worldPosition)
@@ -424,20 +431,17 @@ public class PaperPlayerTerritory : MonoBehaviour
         worldPosition.y =
             territoryManager.GroundY + trailHeightOffset;
 
+        Vector3 previousPosition = trailPositions.Count > 0
+            ? trailPositions[trailPositions.Count - 1]
+            : worldPosition;
+
         trailPositions.Add(worldPosition);
 
-        bool insideEnemyTerritory =
-            territoryManager.IsInsideEnemyTerritory(
-                worldPosition
-            );
-
-        if (insideEnemyTerritory ||
-            useSampledCutGrassTrail)
+        if (territoryManager.IsInsideEnemyTerritory(worldPosition))
         {
-            float cutRadius =
-                playerCutter != null
-                    ? playerCutter.GetEffectiveCutRadius()
-                    : territoryManager.CellSize * 0.5f;
+            float cutRadius = playerCutter != null
+                ? playerCutter.GetEffectiveCutRadius()
+                : territoryManager.CellSize * 0.5f;
 
             bool cutEnemyGrass =
                 territoryManager.CutEnemyTerritoryGrass(
@@ -447,22 +451,63 @@ public class PaperPlayerTerritory : MonoBehaviour
 
             if (cutEnemyGrass && playerCutter != null)
             {
-                playerCutter.PlayCapturedTerritoryParticle(
-                    worldPosition
-                );
+                // Keep the existing territory-based particle colours.
+                playerCutter.PlayCapturedTerritoryParticle(worldPosition);
             }
 
-            AddCutGrassVisual(worldPosition);
+            Vector3 direction = worldPosition - previousPosition;
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude <= 0.000001f)
+            {
+                direction = Vector3.forward;
+            }
+            else
+            {
+                direction.Normalize();
+            }
+
+            Vector3 sideways =
+                new Vector3(-direction.z, 0f, direction.x);
+
+            int rows = Mathf.Max(1, capturedTrailRows);
+
+            // An odd count preserves the original centre row.
+            if (rows % 2 == 0)
+            {
+                rows++;
+            }
+
+            float halfWidth = cutRadius * 0.8f;
+
+            for (int row = 0; row < rows; row++)
+            {
+                float offset = rows == 1
+                    ? 0f
+                    : Mathf.Lerp(
+                        -halfWidth,
+                        halfWidth,
+                        row / (float)(rows - 1)
+                    );
+
+                Vector3 position =
+                    worldPosition + sideways * offset;
+
+                // Never add these extra visuals to neighbouring wild
+                // or player-owned territory.
+                if (territoryManager.IsInsideEnemyTerritory(position))
+                {
+                    AddCutGrassVisual(position);
+                }
+            }
         }
 
-        if (trailRenderer == null ||
-            !enableLineRenderer)
+        if (trailRenderer == null || !enableLineRenderer)
         {
             return;
         }
 
-        trailRenderer.positionCount =
-            trailPositions.Count;
+        trailRenderer.positionCount = trailPositions.Count;
 
         trailRenderer.SetPosition(
             trailPositions.Count - 1,
@@ -486,14 +531,16 @@ public class PaperPlayerTerritory : MonoBehaviour
     {
         trailPositions.Clear();
         activeTrailInstanceCount = 0;
+
         useSampledCutGrassTrail = false;
+        distanceSinceCapturedTrailSample = 0f;
 
         if (trailRenderer != null)
         {
             trailRenderer.positionCount = 0;
         }
 
-        // Batch arrays remain allocated for reuse.
+        // Keep batch arrays allocated for reuse.
     }
 
     private void DrawCutGrassTrail()

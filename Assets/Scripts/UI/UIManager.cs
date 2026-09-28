@@ -16,6 +16,12 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameManager gameManager;
     [SerializeField] private Text PlayerDiedText;
 
+    [Header("Speed Power-Up")]
+    [SerializeField] private Button speedBoostButton;
+
+    [Header("Boundary Power-Up")]
+    [SerializeField] private Button boundaryPowerUpButton;
+
     private Coroutine playerDiedCoroutine;
 
     private void Awake()
@@ -35,6 +41,36 @@ public class UIManager : MonoBehaviour
         {
             PlayerDiedText.gameObject.SetActive(false);
         }
+    }
+
+    private void Update()
+    {
+        UpdatePowerUpButton(
+            speedBoostButton,
+            gameManager != null && gameManager.IsSpeedBoostLevel(),
+            gameManager != null && gameManager.CanUsePlayerSpeedBoost()
+        );
+
+        UpdatePowerUpButton(
+            boundaryPowerUpButton,
+            gameManager != null && gameManager.IsBoundaryPowerUpLevel(),
+            gameManager != null && gameManager.CanUsePlayerBoundary()
+        );
+    }
+
+    private void UpdatePowerUpButton(Button button, bool visible, bool usable)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        if (button.gameObject.activeSelf != visible)
+        {
+            button.gameObject.SetActive(visible);
+        }
+
+        button.interactable = visible && usable;
     }
 
     public void ActiveWinningPanel()
@@ -109,19 +145,28 @@ public class UIManager : MonoBehaviour
 
     public void ActivatePlayerBoundary()
     {
-        Debug.Log("Boundary Function Called");
-
-        PlayerTerritoryBoundary boundary =
-            FindObjectOfType<PlayerTerritoryBoundary>();
-
-        if (boundary == null)
+        if (gameManager != null && gameManager.TryActivatePlayerBoundary())
         {
-            Debug.LogError("PlayerTerritoryBoundary not found on the active Level.");
+            if (boundaryPowerUpButton != null)
+            {
+                boundaryPowerUpButton.interactable = false;
+            }
+        }
+    }
+
+    public void ActivatePlayerSpeedBoost()
+    {
+        if (gameManager == null)
+        {
             return;
         }
 
-        boundary.ActivateBoundary();
-
-        Debug.Log("Player Boundary Activated");
+        if (gameManager.TryActivatePlayerSpeedBoost())
+        {
+            if (speedBoostButton != null)
+            {
+                speedBoostButton.interactable = false;
+            }
+        }
     }
 }

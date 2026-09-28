@@ -13,6 +13,12 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TerritoryPercentage territoryPercentage;
     [SerializeField] private UIManager uiManager;
 
+    [Header("Power-Up Availability")]
+    [Tooltip("Level numbers where the boundary-wall power-up is available.")]
+    [SerializeField] private int[] boundaryPowerUpLevels = { 3 };
+    [Tooltip("Level numbers where the paid speed power-up is available.")]
+    [SerializeField] private int[] speedBoostLevels = { 4 };
+
     private TerritoryManager currentTerritoryManager;
     private GameObject currentLevelInstance;
     private GameObject currentPlayerInstance;
@@ -21,11 +27,22 @@ public class GameManager : MonoBehaviour
     private LevelWinCondition currentWinCondition;
 
     private PaperPlayerTerritory currentPlayerTerritory;
+    private PlayerTerritoryBoundary currentPlayerBoundary;
+    private bool boundaryPowerUpUsed;
+    private bool boundaryActivationInProgress;
+    private bool currentLevelEnded;
 
     public bool IsLevelRunning => currentLevelInstance != null;
 
+    private const int SpeedBoostCost = 100;
+
     private void CleanupCurrentLevel()
     {
+        if (currentPlayerBoundary != null)
+        {
+            currentPlayerBoundary.DeactivateBoundary();
+        }
+
         if (currentTerritoryManager != null)
         {
             currentTerritoryManager.OnWinningPercentageReached -=
@@ -59,6 +76,10 @@ public class GameManager : MonoBehaviour
         currentTerritoryManager = null;
         currentPlayerTerritory = null;
         currentWinCondition = null;
+        currentPlayerBoundary = null;
+        boundaryPowerUpUsed = false;
+        boundaryActivationInProgress = false;
+        currentLevelEnded = false;
     }
 
     public void ReturnToMainMenu()
@@ -191,6 +212,8 @@ public class GameManager : MonoBehaviour
                 HandlePlayerDeath;
         }
 
+        ConfigureBoundaryPowerUp(territoryManager);
+
         if (cameraFollow != null)
         {
             cameraFollow.SetTarget(
@@ -211,6 +234,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleWinningPercentageReached()
     {
+        currentLevelEnded = true;
         LevelProgress.UnlockLevel(currentLevelNumber + 1);
 
         if (currentWinCondition != null)
@@ -242,6 +266,11 @@ public class GameManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (currentPlayerBoundary != null)
+        {
+            currentPlayerBoundary.DeactivateBoundary();
+        }
+
         if (currentTerritoryManager != null)
         {
             currentTerritoryManager.OnWinningPercentageReached -= HandleWinningPercentageReached;
@@ -255,6 +284,7 @@ public class GameManager : MonoBehaviour
 
     private void HandlePlayerDeath()
     {
+        currentLevelEnded = true;
         SetPlayerMovementEnabled(false);
 
         if (uiManager != null)
@@ -266,5 +296,177 @@ public class GameManager : MonoBehaviour
     public void RestartCurrentLevel()
     {
         StartLevel(currentLevelNumber);
+    }
+
+    public bool IsSpeedBoostLevel()
+    {
+        return IsPowerUpEnabledForCurrentLevel(speedBoostLevels) &&
+               currentLevelInstance != null &&
+               currentPlayerInstance != null &&
+               currentPlayerInstance.activeInHierarchy;
+    }
+
+    public bool CanUsePlayerSpeedBoost()
+    {
+        if (currentLevelEnded || !IsSpeedBoostLevel() ||
+            CoinManager.Coins < SpeedBoostCost)
+        {
+            return false;
+        }
+
+        if (currentPlayerTerritory != null &&
+            !currentPlayerTerritory.isActiveAndEnabled)
+        {
+            return false;
+        }
+
+        Movement movement =
+            currentPlayerInstance.GetComponentInChildren<Movement>();
+
+        return movement != null && movement.CanUseSpeedBoost();
+    }
+
+    public bool TryActivatePlayerSpeedBoost()
+    {
+        if (!CanUsePlayerSpeedBoost())
+        {
+            return false;
+        }
+
+        Movement movement =
+            currentPlayerInstance.GetComponentInChildren<Movement>();
+
+        if (movement == null)
+        {
+            return false;
+        }
+
+        if (!CoinManager.SpendCoins(SpeedBoostCost))
+        {
+            return false;
+        }
+
+        if (movement != null && movement.TryActivateSpeedBoost())
+        {
+            return true;
+        }
+
+        // Do not charge for an unsuccessful activation.
+        CoinManager.AddCoins(SpeedBoostCost);
+        return false;
+    }
+
+    private bool IsPowerUpEnabledForCurrentLevel(int[] enabledLevels)
+    {
+        if (enabledLevels == null || currentLevelNumber <= 0)
+        {
+            return false;
+        }
+
+        foreach (int levelNumber in enabledLevels)
+        {
+            if (levelNumber == currentLevelNumber)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ConfigureBoundaryPowerUp(TerritoryManager manager)
+    {
+        currentPlayerBoundary = currentLevelInstance
+            .GetComponentInChildren<PlayerTerritoryBoundary>(true);
+
+        // Keep the existing Level 3 appearance/settings. Future enabled
+        // levels receive a boundary component automatically if needed.
+        if (currentPlayerBoundary == null &&
+            IsPowerUpEnabledForCurrentLevel(boundaryPowerUpLevels))
+        {
+            currentPlayerBoundary = currentLevelInstance
+                .AddComponent<PlayerTerritoryBoundary>();
+        }
+
+        if (currentPlayerBoundary != null)
+        {
+            currentPlayerBoundary.Initialize(manager, currentPlayerTerritory);
+        }
+    }
+
+    public bool IsBoundaryPowerUpLevel()
+    {
+        return IsPowerUpEnabledForCurrentLevel(boundaryPowerUpLevels) &&
+               currentLevelInstance != null &&
+               currentPlayerInstance != null &&
+               currentPlayerInstance.activeInHierarchy;
+    }
+
+    public bool CanUsePlayerBoundary()
+    {
+        const int wallCost = 80;
+
+        return IsBoundaryPowerUpLevel() &&
+               !currentLevelEnded &&
+               !boundaryPowerUpUsed &&
+               !boundaryActivationInProgress &&
+               Time.timeScale > 0f &&
+               CoinManager.Coins >= wallCost &&
+               currentTerritoryManager != null &&
+               currentTerritoryManager.IsInitialized &&
+               currentPlayerTerritory != null &&
+               currentPlayerTerritory.isActiveAndEnabled &&
+               currentPlayerBoundary != null &&
+               currentPlayerBoundary.isActiveAndEnabled &&
+               !currentPlayerBoundary.IsActive;
+    }
+
+    public bool TryActivatePlayerBoundary()
+    {
+        const int wallCost = 80;
+
+        if (!CanUsePlayerBoundary())
+        {
+            return false;
+        }
+
+        boundaryActivationInProgress = true;
+
+        bool coinsSpent = false;
+        bool activated = false;
+
+        try
+        {
+            coinsSpent = CoinManager.SpendCoins(wallCost);
+
+            if (!coinsSpent)
+            {
+                return false;
+            }
+
+            if (currentPlayerBoundary == null ||
+                !currentPlayerBoundary.isActiveAndEnabled)
+            {
+                return false;
+            }
+
+            currentPlayerBoundary.ActivateBoundary();
+
+            activated = currentPlayerBoundary != null &&
+                        currentPlayerBoundary.IsActive;
+
+            boundaryPowerUpUsed = activated;
+
+            return activated;
+        }
+        finally
+        {
+            if (coinsSpent && !activated)
+            {
+                CoinManager.AddCoins(wallCost);
+            }
+
+            boundaryActivationInProgress = false;
+        }
     }
 }

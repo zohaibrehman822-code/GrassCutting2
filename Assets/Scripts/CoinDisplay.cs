@@ -6,13 +6,16 @@ public class CoinDisplay : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Text coinText;
+    [SerializeField] private TMP_Text sharedCoinText;
+    [Tooltip("Hide the shared coin text while any of these panels is open.")]
+    [SerializeField] private GameObject[] hiddenOnPanels;
 
     [Header("Display")]
     [SerializeField] private string format = "{0}";
 
     private void Awake()
     {
-        if (coinText == null)
+        if (coinText == null && sharedCoinText == null)
         {
             coinText = GetComponentInChildren<Text>(true);
         }
@@ -34,9 +37,45 @@ public class CoinDisplay : MonoBehaviour
         Refresh();
     }
 
+    private void LateUpdate()
+    {
+        if (sharedCoinText == null)
+        {
+            return;
+        }
+
+        bool visible = true;
+
+        if (hiddenOnPanels != null)
+        {
+            foreach (GameObject panel in hiddenOnPanels)
+            {
+                if (panel != null && panel.activeInHierarchy)
+                {
+                    visible = false;
+                    break;
+                }
+            }
+        }
+
+        if (sharedCoinText.gameObject.activeSelf != visible)
+        {
+            sharedCoinText.gameObject.SetActive(visible);
+        }
+    }
+
     private void Refresh()
     {
-        if (coinText == null) return;
-        coinText.text = string.Format(format, CoinManager.Coins);
+        string text = string.Format(format, CoinManager.Coins);
+
+        if (coinText != null)
+        {
+            coinText.text = text;
+        }
+
+        if (sharedCoinText != null)
+        {
+            sharedCoinText.text = text;
+        }
     }
 }

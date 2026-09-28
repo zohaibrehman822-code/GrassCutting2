@@ -4,7 +4,7 @@ using System;
 public static class CoinManager
 {
     private const string CoinsKey = "PlayerCoins";
-    private const int StartingCoins = 100;
+    private const int StartingCoins = 1000;
 
     public static event Action<int> OnCoinsChanged;
 

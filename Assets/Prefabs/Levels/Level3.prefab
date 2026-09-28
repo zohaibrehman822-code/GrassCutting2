@@ -1197,8 +1197,6 @@ MonoBehaviour:
   enemies:
   - enemyPrefab: {fileID: 2260831856752467104, guid: 91fb0aab444e3cc4486fa56c209f423e, type: 3}
     spawnPoint: {fileID: 7933375428778650063}
-  - enemyPrefab: {fileID: 2260831856752467104, guid: 5eeedf1d70f416543a343ae9c89a323c, type: 3}
-    spawnPoint: {fileID: 4765565033551671036}
 --- !u!114 &3314192991697796300
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1211,7 +1209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f268c29f41218e042bfa69065e671f84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerTerritoryBoundary
-  territoryManager: {fileID: 0}
+  territoryManager: {fileID: 971423417311796116}
   wallHeightMultiplier: 2
   wallThicknessMultiplier: 0.089
   wallMaterial: {fileID: 2100000, guid: ec4547dca3db19749958c56f02e3e9e4, type: 2}
@@ -1340,7 +1338,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d71501af4b0907449ed9064be386158, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelWinCondition
-  winningPercentage: 50
+  winningPercentage: 10
   coinReward: 60
 --- !u!1 &8799593024740551182
 GameObject:

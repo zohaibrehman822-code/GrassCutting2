@@ -45,6 +45,14 @@ public class Movement : MonoBehaviour
     [Tooltip("How quickly particle emission changes with movement speed.")]
     [SerializeField, Min(0.1f)] private float particleSpeedMultiplier = 1f;
 
+    private const float SpeedBoostMultiplier = 2f;
+    private const float SpeedBoostDuration = 60f;
+
+    private bool speedBoostUsed;
+    private bool speedBoostActive;
+    private float speedBeforeBoost;
+    private float speedBoostEndsAt;
+
     private Rigidbody rb;
     private RotateObject rotateObject;
 
@@ -104,6 +112,8 @@ public class Movement : MonoBehaviour
 
     private void OnDisable()
     {
+        EndSpeedBoost();
+
         moveAction.Disable();
         pointerPositionAction.Disable();
         pointerPressAction.Disable();
@@ -124,8 +134,15 @@ public class Movement : MonoBehaviour
 
     private void Update()
     {
+        if (speedBoostActive && Time.time >= speedBoostEndsAt)
+        {
+            EndSpeedBoost();
+        }
+
         if (!canMove)
+        {
             return;
+        }
 
         ReadInput();
     }
@@ -137,9 +154,15 @@ public class Movement : MonoBehaviour
             return;
         }
 
-        moveSpeed = Mathf.Max(0f, blade.MoveSpeed);
+        speedBeforeBoost = Mathf.Max(0f, blade.MoveSpeed);
+
+        moveSpeed = speedBoostActive
+            ? speedBeforeBoost * SpeedBoostMultiplier
+            : speedBeforeBoost;
+
         acceleration = Mathf.Max(0.1f, blade.Acceleration);
         braking = Mathf.Max(0.1f, blade.Braking);
+
         turnAcceleration = Mathf.Max(
             0.1f,
             blade.TurnAcceleration
@@ -484,5 +507,55 @@ public class Movement : MonoBehaviour
         position.y = height;
 
         rb.position = position;
+    }
+
+    public bool CanUseSpeedBoost()
+    {
+        return isActiveAndEnabled &&
+               canMove &&
+               !speedBoostUsed &&
+               moveSpeed > 0f &&
+               Time.timeScale > 0f;
+    }
+
+    public bool TryActivateSpeedBoost()
+    {
+        if (!CanUseSpeedBoost())
+        {
+            return false;
+        }
+
+        speedBoostUsed = true;
+        speedBoostActive = true;
+
+        speedBeforeBoost = moveSpeed;
+        moveSpeed = speedBeforeBoost * SpeedBoostMultiplier;
+
+        speedBoostEndsAt = Time.time + SpeedBoostDuration;
+
+        return true;
+    }
+
+    private void EndSpeedBoost()
+    {
+        if (!speedBoostActive)
+        {
+            return;
+        }
+
+        speedBoostActive = false;
+        speedBoostEndsAt = 0f;
+
+        moveSpeed = Mathf.Max(0f, speedBeforeBoost);
+
+        // Prevent leftover boosted velocity after the effect expires.
+        currentVelocity = Vector3.ClampMagnitude(
+            currentVelocity,
+            moveSpeed
+        );
+
+        smoothedDirection = moveSpeed > 0.001f
+            ? Vector3.ClampMagnitude(currentVelocity / moveSpeed, 1f)
+            : Vector3.zero;
     }
 }
