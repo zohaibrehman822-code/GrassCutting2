@@ -69,6 +69,15 @@ public class GameManager : MonoBehaviour
         if (currentLevelInstance != null)
         {
             currentLevelInstance.SetActive(false);
+
+            // Older enemies may have been spawned outside the level hierarchy.
+            // Explicitly remove every enemy tracked by this level's spawners.
+            foreach (EnemySpawner levelSpawner in
+                     currentLevelInstance.GetComponentsInChildren<EnemySpawner>(true))
+            {
+                levelSpawner.DespawnAll();
+            }
+
             Destroy(currentLevelInstance);
             currentLevelInstance = null;
         }

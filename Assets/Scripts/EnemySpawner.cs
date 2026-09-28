@@ -48,7 +48,8 @@ public void SpawnAll()
             GameObject enemy = Instantiate(
                 spawnPoint.enemyPrefab,
                 spawnPosition,
-                spawnPoint.spawnPoint.rotation
+                spawnPoint.spawnPoint.rotation,
+                transform
             );
 
             spawnedEnemies.Add(enemy);
@@ -63,15 +64,25 @@ public void SpawnAll()
 
     public void DespawnAll()
     {
-        foreach (GameObject enemy in spawnedEnemies)
+        // Clear ownership first so destruction callbacks cannot modify the
+        // collection being iterated or leave stale entries during a restart.
+        GameObject[] enemiesToRemove = spawnedEnemies.ToArray();
+        spawnedEnemies.Clear();
+
+        foreach (GameObject enemy in enemiesToRemove)
         {
             if (enemy != null)
             {
+                // Hide and stop AI immediately; Destroy finishes this frame.
+                enemy.SetActive(false);
                 Destroy(enemy);
             }
         }
+    }
 
-        spawnedEnemies.Clear();
+    private void OnDestroy()
+    {
+        DespawnAll();
     }
 
     private void OnDrawGizmosSelected()
