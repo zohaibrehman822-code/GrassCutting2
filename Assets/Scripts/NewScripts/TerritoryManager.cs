@@ -28,6 +28,8 @@ public class TerritoryManager : MonoBehaviour
     private readonly HashSet<Vector2Int> trailCells = new HashSet<Vector2Int>();
     private readonly List<Vector2Int> trail = new List<Vector2Int>();
 
+    [SerializeField] private Transform playerSpawnPoint;
+
     private bool initialized;
 
     /// <summary>
@@ -97,6 +99,8 @@ public class TerritoryManager : MonoBehaviour
         Vector2Int.up,
         Vector2Int.down
     };
+
+    public Transform PlayerSpawnPoint => playerSpawnPoint;
 
     private void Start()
     {

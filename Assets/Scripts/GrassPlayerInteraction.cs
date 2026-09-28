@@ -12,6 +12,9 @@ public sealed class GrassPlayerInteraction : MonoBehaviour
     [SerializeField] private Material wildGrassMaterial;
     [SerializeField] private Material territoryGrassMaterial;
 
+    [Tooltip("Materials used by enemy captured grass (red/blue).")]
+    [SerializeField] private Material[] enemyGrassMaterials;
+
     [Header("Interaction")]
     [Min(0.1f)]
     [SerializeField] private float radius = 1.3f;
@@ -139,6 +142,19 @@ public sealed class GrassPlayerInteraction : MonoBehaviour
                 trailData
             );
         }
+
+        if (enemyGrassMaterials != null)
+        {
+            for (int i = 0; i < enemyGrassMaterials.Length; i++)
+            {
+                SetMaterialInteraction(
+                    enemyGrassMaterials[i],
+                    centerData,
+                    motionData,
+                    trailData
+                );
+            }
+        }
     }
 
     private void OnDisable()
@@ -160,6 +176,19 @@ public sealed class GrassPlayerInteraction : MonoBehaviour
                 Vector4.zero,
                 Vector4.zero
             );
+        }
+
+        if (enemyGrassMaterials != null)
+        {
+            for (int i = 0; i < enemyGrassMaterials.Length; i++)
+            {
+                SetMaterialInteraction(
+                    enemyGrassMaterials[i],
+                    Vector4.zero,
+                    Vector4.zero,
+                    Vector4.zero
+                );
+            }
         }
     }
 

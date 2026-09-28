@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0daa77aa6adf9bb4280cb11c0d7feb39, type: 3}
+  m_Name: Blade2
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerBlade
+  bladeId: B002
+  bladeName: Advanced Blade
+  playerPrefab: {fileID: 7417827856478457364, guid: 7e56c5aa5df270848947c531b616f042, type: 3}
+  moveSpeed: 2.1
+  acceleration: 23
+  braking: 18
+  turnAcceleration: 10
+  price: 100
+  isUnlocked: 0

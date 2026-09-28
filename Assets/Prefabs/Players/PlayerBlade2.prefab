@@ -219,7 +219,7 @@ GameObject:
   - component: {fileID: 5121016427406583691}
   - component: {fileID: 1146539233736366798}
   m_Layer: 0
-  m_Name: Player1_withParticleYellow
+  m_Name: PlayerBlade2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -276,7 +276,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6a95cb903d8b8e941b1f0ddd2944669e, type: 2}
+  - {fileID: 2100000, guid: 6ba4691450a2c6d47a888641bed21706, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -381,6 +381,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   wildGrassMaterial: {fileID: 2100000, guid: 4b12ef27424254e41a7a02134a9d112f, type: 2}
   territoryGrassMaterial: {fileID: 2100000, guid: 1287616096d514740af11922c70dba5e, type: 2}
+  enemyGrassMaterials:
+  - {fileID: 2100000, guid: cfbf00a84e0808c438699f622ca61f5f, type: 2}
+  - {fileID: 2100000, guid: ff5888357e1e6eb45979a09381c8b702, type: 2}
   radius: 2.145
   bendDistance: 0.4
   responseSpeed: 0.5

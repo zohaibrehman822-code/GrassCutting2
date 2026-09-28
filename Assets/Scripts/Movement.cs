@@ -130,6 +130,22 @@ public class Movement : MonoBehaviour
         ReadInput();
     }
 
+    public void ApplyBladeStats(PlayerBlade blade)
+    {
+        if (blade == null)
+        {
+            return;
+        }
+
+        moveSpeed = Mathf.Max(0f, blade.MoveSpeed);
+        acceleration = Mathf.Max(0.1f, blade.Acceleration);
+        braking = Mathf.Max(0.1f, blade.Braking);
+        turnAcceleration = Mathf.Max(
+            0.1f,
+            blade.TurnAcceleration
+        );
+    }
+
     private void FixedUpdate()
     {
         if (!canMove)
