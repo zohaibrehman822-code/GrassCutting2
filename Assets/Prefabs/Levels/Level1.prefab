@@ -226,13 +226,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   planeRenderer: {fileID: 4405128282805176588}
-  grassPrefab: {fileID: 6170220693409598867, guid: e80e6bde50fe1514897522d0d360c34e, type: 3}
+  grassPrefab: {fileID: 923971851712227969, guid: a62206bac36273947b9e53d55cfb8473, type: 3}
   useLowPolyTufts: 1
   grassCount: 70000
   spacing: 0.095
   mobileSpacingMultiplier: 1
   jitter: 0.02
-  scaleRange: {x: 0.8, y: 1}
+  scaleRange: {x: 0.5, y: 0.5}
   randomYRotation: 1
   randomTiltDegrees: 6
   castShadows: 0

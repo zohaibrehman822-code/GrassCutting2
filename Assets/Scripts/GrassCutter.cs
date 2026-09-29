@@ -72,6 +72,8 @@ public class GrassCutter : MonoBehaviour
 
     private TerritoryManager territoryManager;
     private EnemyAI enemyAI;
+
+    private PaperPlayerTerritory playerTerritory;
     private float nextOwnTerritoryParticleTime;
 
     public GameObject CapturedTerritoryParticlePrefab =>
@@ -260,58 +262,49 @@ public class GrassCutter : MonoBehaviour
 
         nextCutTime = Time.time + cutInterval;
 
-        Vector3 cutPosition =
-            bladeCollider != null
-                ? bladeCollider.bounds.center
-                : transform.position;
+        Vector3 cutPosition = bladeCollider != null
+            ? bladeCollider.bounds.center
+            : transform.position;
 
         grassGrid.Cut(
             cutPosition,
             GetEffectiveCutRadius(),
             this
         );
+    }
 
-        if (territoryManager == null ||
-            Time.time < nextOwnTerritoryParticleTime)
+    private bool CanPlayTrailCutParticle(Vector3 worldPosition)
+    {
+        if (!isActiveAndEnabled ||
+            !cuttingEnabled ||
+            Time.timeScale <= 0f ||
+            territoryManager == null ||
+            !territoryManager.IsInitialized)
         {
-            return;
+            return false;
         }
 
-        bool moving = false;
-        bool onOwnTerritory = false;
-
-        if (playerMovement != null)
+        if (enemyAI != null)
         {
-            Vector3 direction = playerMovement.CurrentMoveDirection;
-            direction.y = 0f;
-
-            moving = direction.sqrMagnitude > 0.0004f;
-            onOwnTerritory =
-                territoryManager.IsInsideTerritory(cutPosition);
-        }
-        else if (enemyMovement != null && enemyAI != null)
-        {
-            moving = enemyMovement.IsMoving;
-            onOwnTerritory =
-                territoryManager.EnemyTouchesTerritory(
-                    enemyAI,
-                    0.01f
-                );
+            return enemyAI.isActiveAndEnabled &&
+                   enemyAI.IsOutsideTerritory &&
+                   !territoryManager.IsInsideEnemyTerritory(
+                       enemyAI,
+                       worldPosition
+                   );
         }
 
-        if (!moving || !onOwnTerritory)
+        if (playerTerritory == null && playerMovement != null)
         {
-            return;
+            playerTerritory =
+                playerMovement.GetComponentInChildren
+                    <PaperPlayerTerritory>(true);
         }
 
-        nextOwnTerritoryParticleTime =
-            Time.time +
-            cutInterval * Mathf.Max(1, cutsPerFastParticle);
-
-        Vector3 effectPosition = cutPosition;
-        effectPosition.y = territoryManager.GroundY;
-
-        PlayCapturedTerritoryParticle(effectPosition);
+        return playerTerritory != null &&
+               playerTerritory.isActiveAndEnabled &&
+               playerTerritory.IsOutsideTerritory &&
+               !territoryManager.IsInsideTerritory(worldPosition);
     }
 
     private void OnGrassWasCut(Vector3 grassPosition)
@@ -361,6 +354,12 @@ public class GrassCutter : MonoBehaviour
         }
 
         TryPlayCutAudio();
+
+        if (!CanPlayTrailCutParticle(grassPosition))
+        {
+            cutsSinceParticle = 0;
+            return;
+        }
 
         int cutsPerParticle =
             moveStrength >= slowMovementThreshold
@@ -604,11 +603,10 @@ public class GrassCutter : MonoBehaviour
             Time.time + particle.Duration + cleanupPadding;
     }
 
-    public void PlayCapturedTerritoryParticle(
-    Vector3 worldPosition)
+    public void PlayCapturedTerritoryParticle(Vector3 worldPosition)
     {
-        if (!cuttingEnabled ||
-            capturedTerritoryParticlePrefab == null)
+        if (capturedTerritoryParticlePrefab == null ||
+            !CanPlayTrailCutParticle(worldPosition))
         {
             return;
         }
