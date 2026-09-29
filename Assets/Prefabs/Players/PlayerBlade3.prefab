@@ -384,10 +384,11 @@ MonoBehaviour:
   enemyGrassMaterials:
   - {fileID: 2100000, guid: cfbf00a84e0808c438699f622ca61f5f, type: 2}
   - {fileID: 2100000, guid: ff5888357e1e6eb45979a09381c8b702, type: 2}
-  radius: 2.145
-  bendDistance: 0.4
-  responseSpeed: 0.5
-  trailFadeSeconds: 24
+  radius: 0.65
+  bendDistance: 0.18
+  responseSpeed: 8
+  trailFadeSeconds: 0.65
+  spinBendStrength: 0.12
 --- !u!65 &4667817161909148258
 BoxCollider:
   m_ObjectHideFlags: 0

@@ -226,15 +226,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   planeRenderer: {fileID: 4405128282805176588}
-  grassPrefab: {fileID: 923971851712227969, guid: a62206bac36273947b9e53d55cfb8473, type: 3}
-  useLowPolyTufts: 1
-  grassCount: 70000
-  spacing: 0.095
+  grassPrefab: {fileID: 2991584805699182471, guid: add31667d7dccbd47b9564444927d798, type: 3}
+  useLowPolyTufts: 0
+  grassCount: 126818
+  spacing: 0.065
   mobileSpacingMultiplier: 1
-  jitter: 0.02
-  scaleRange: {x: 0.5, y: 0.5}
+  jitter: 0.01
+  scaleRange: {x: 0.25, y: 0.1}
   randomYRotation: 1
-  randomTiltDegrees: 6
+  randomTiltDegrees: 2
   castShadows: 0
   receiveShadows: 0
   batchTileSize: 4
@@ -324,11 +324,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c1bb5fff91e0cf40bab446cef36dc5d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerTerritoryPrefabGrass: {fileID: 6231992595370580923, guid: 1f2ef1dc77f2ed949b80417568a4b698, type: 3}
-  useLowPolyTufts: 1
-  grassSpacing: 0.095
-  jitter: 0.02
-  scaleRange: {x: 0.8, y: 1}
+  playerTerritoryPrefabGrass: {fileID: 5676676584576990472, guid: 54cf22d54650d974baad8b61c105bfea, type: 3}
+  useLowPolyTufts: 0
+  grassSpacing: 0.065
+  jitter: 0.01
+  scaleRange: {x: 0.25, y: 0.14}
   heightMultiplier: 0.36
   randomYRotation: 1
   randomSeed: 6789
@@ -363,6 +363,15 @@ MonoBehaviour:
     m_RotationOrder: 4
   castShadows: 0
   receiveShadows: 0
+  showCapturedBorder: 1
+  borderHeightMultiplier: 0.3
+  borderThicknessMultiplier: 0.24
+  borderOutwardOffsetMultiplier: 0.016666668
+  borderCornerRadiusMultiplier: 1
+  borderCurveSegments: 8
+  borderMaterial: {fileID: 0}
+  borderUsesGrassColor: 1
+  borderColor: {r: 0.65, g: 0.85, b: 0.22, a: 1}
 --- !u!114 &4247440714879823558
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -402,7 +411,7 @@ Transform:
   m_GameObject: {fileID: 8744745189214450501}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.64, z: 0}
+  m_LocalPosition: {x: 0, y: 0.16, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

@@ -91,6 +91,93 @@ public class OptimizedGrassField : MonoBehaviour
     private int[] grassIndexByActiveSlot;
     private int activeGrassCount;
 
+    private sealed class VisualGrassMask
+    {
+        public Matrix4x4 OriginalMatrix;
+        public int References;
+    }
+
+    private readonly Dictionary<Component, HashSet<int>> visualMasks =
+        new Dictionary<Component, HashSet<int>>();
+    private readonly Dictionary<int, VisualGrassMask> visuallyHiddenGrass =
+        new Dictionary<int, VisualGrassMask>();
+
+    // Silent, reversible display suppression. Never fires grass-cut events
+    // or turns border decoration into additional captured territory.
+    public void SetVisualMask(Component owner, HashSet<int> indices)
+    {
+        if (owner == null || !generated) return;
+        if (!visualMasks.TryGetValue(owner, out HashSet<int> previous))
+            previous = new HashSet<int>();
+
+        foreach (int index in previous)
+        {
+            if (indices != null && indices.Contains(index)) continue;
+            if (!visuallyHiddenGrass.TryGetValue(index, out VisualGrassMask mask)) continue;
+            mask.References--;
+            if (mask.References > 0) continue;
+            int slot = activeSlotByGrassIndex[index];
+            if (slot >= 0 && !grassCut[index])
+                batches[slot / MaxInstancesPerBatch][slot % MaxInstancesPerBatch] = mask.OriginalMatrix;
+            visuallyHiddenGrass.Remove(index);
+        }
+
+        if (indices != null)
+        {
+            foreach (int index in indices)
+            {
+                if (previous.Contains(index) || index < 0 || index >= grassCut.Length || grassCut[index]) continue;
+                int slot = activeSlotByGrassIndex[index];
+                if (slot < 0) continue;
+                if (!visuallyHiddenGrass.TryGetValue(index, out VisualGrassMask mask))
+                {
+                    mask = new VisualGrassMask {
+                        OriginalMatrix = batches[slot / MaxInstancesPerBatch][slot % MaxInstancesPerBatch]
+                    };
+                    visuallyHiddenGrass.Add(index, mask);
+                }
+                mask.References++;
+                Matrix4x4 hidden = mask.OriginalMatrix;
+                hidden.SetColumn(0, Vector4.zero);
+                hidden.SetColumn(1, Vector4.zero);
+                hidden.SetColumn(2, Vector4.zero);
+                batches[slot / MaxInstancesPerBatch][slot % MaxInstancesPerBatch] = hidden;
+            }
+            visualMasks[owner] = new HashSet<int>(indices);
+        }
+        else visualMasks.Remove(owner);
+    }
+
+    public float GetGrassHorizontalRadius(int index)
+    {
+        if (!generated || index < 0 || index >= GrassCount || grassCut[index]) return 0f;
+        int slot = activeSlotByGrassIndex[index];
+        if (slot < 0) return 0f;
+        Matrix4x4 matrix = visuallyHiddenGrass.TryGetValue(index, out VisualGrassMask mask)
+            ? mask.OriginalMatrix : batches[slot / MaxInstancesPerBatch][slot % MaxInstancesPerBatch];
+        Bounds bounds = grassMesh.bounds;
+        Vector3 centre = matrix.MultiplyVector(bounds.center);
+        Vector4 x = matrix.GetColumn(0), y = matrix.GetColumn(1), z = matrix.GetColumn(2);
+        float extentX = Mathf.Abs(x.x) * bounds.extents.x + Mathf.Abs(y.x) * bounds.extents.y + Mathf.Abs(z.x) * bounds.extents.z;
+        float extentZ = Mathf.Abs(x.z) * bounds.extents.x + Mathf.Abs(y.z) * bounds.extents.y + Mathf.Abs(z.z) * bounds.extents.z;
+        return new Vector2(Mathf.Abs(centre.x) + extentX, Mathf.Abs(centre.z) + extentZ).magnitude;
+    }
+
+    public float MaximumGrassHorizontalRadius
+    {
+        get
+        {
+            if (grassMesh == null) return 0f;
+            Bounds bounds = grassMesh.bounds;
+            Vector3 corner = new Vector3(
+                Mathf.Max(Mathf.Abs(bounds.min.x), Mathf.Abs(bounds.max.x)),
+                Mathf.Max(Mathf.Abs(bounds.min.y), Mathf.Abs(bounds.max.y)),
+                Mathf.Max(Mathf.Abs(bounds.min.z), Mathf.Abs(bounds.max.z))
+            );
+            return corner.magnitude * Mathf.Max(Mathf.Abs(scaleRange.x), Mathf.Abs(scaleRange.y));
+        }
+    }
+
     private readonly List<int> batchCounts =
         new List<int>();
 
@@ -508,6 +595,8 @@ public class OptimizedGrassField : MonoBehaviour
     [ContextMenu("Clear Grass")]
     public void ClearGrass()
     {
+        visualMasks.Clear();
+        visuallyHiddenGrass.Clear();
         batches.Clear();
         batchCounts.Clear();
         batchBounds.Clear();

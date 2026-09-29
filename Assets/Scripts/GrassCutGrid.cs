@@ -27,6 +27,53 @@ public class GrassCutGrid : MonoBehaviour
 
     private int builtVersion = -1;
 
+    internal void SetTerritoryBorderMask(
+        Component owner, IReadOnlyList<TerritoryBorderMesh.Contour> contours)
+    {
+        if (contours == null || contours.Count == 0)
+        {
+            if (grassField != null) grassField.SetVisualMask(owner, null);
+            return;
+        }
+        if (!EnsureReady()) return;
+
+        HashSet<Vector2Int> candidateCells = new HashSet<Vector2Int>();
+        float padding = grassField.MaximumGrassHorizontalRadius;
+        foreach (TerritoryBorderMesh.Contour contour in contours)
+        {
+            Vector3 minimum = contour.Outer[0], maximum = minimum;
+            foreach (Vector3 point in contour.Outer)
+            {
+                minimum = Vector3.Min(minimum, point);
+                maximum = Vector3.Max(maximum, point);
+            }
+            Vector2Int min = GetCell(minimum - new Vector3(padding, 0f, padding));
+            Vector2Int max = GetCell(maximum + new Vector3(padding, 0f, padding));
+            foreach (Vector2Int cell in cells.Keys)
+                if (cell.x >= min.x && cell.x <= max.x && cell.y >= min.y && cell.y <= max.y)
+                    candidateCells.Add(cell);
+        }
+
+        HashSet<int> hidden = new HashSet<int>();
+        foreach (Vector2Int cell in candidateCells)
+        {
+            foreach (int index in cells[cell])
+            {
+                if (grassField.IsGrassCut(index)) continue;
+                Vector3 position = grassField.GetGrassPosition(index);
+                if (TerritoryBorderMesh.Contains(contours, position, true))
+                {
+                    hidden.Add(index);
+                    continue;
+                }
+                float radius = grassField.GetGrassHorizontalRadius(index);
+                if (TerritoryBorderMesh.DistanceSquared(contours, position, true) <= radius * radius)
+                    hidden.Add(index);
+            }
+        }
+        grassField.SetVisualMask(owner, hidden);
+    }
+
     /// <summary>
     /// Builds the grass lookup grid when the scene starts.
     /// </summary>

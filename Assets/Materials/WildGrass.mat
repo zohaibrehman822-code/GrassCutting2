@@ -20,6 +20,7 @@ Material:
   stringTagMap: {}
   disabledShaderPasses:
   - MOTIONVECTORS
+  - XRMotionVectors
   m_LockedProperties: _Bottom_Color
   m_SavedProperties:
     serializedVersion: 3
@@ -98,7 +99,7 @@ Material:
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
-    - _Color_Variation_Scale: 0.01
+    - _Color_Variation_Scale: 1.77
     - _Cull: 0
     - _Cutoff: 0.5
     - _DetailAlbedoMapScale: 1
@@ -109,10 +110,10 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _Gradient_Strenght: 2
+    - _Gradient_Strenght: 1.27
     - _Metallic: 0
     - _OcclusionStrength: 1
-    - _Offset: 0
+    - _Offset: 0.47
     - _Parallax: 0.005
     - _QueueControl: 0
     - _QueueOffset: 0
@@ -128,21 +129,21 @@ Material:
     - _Wind_Speed: 3
     - _Wind_Strength: 0.85
     - _WorkflowMode: 1
-    - _XRMotionVectorsPass: 1
+    - _XRMotionVectorsPass: 0
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.96, g: 0.72, b: 0.055, a: 1}
-    - _Bottom_Color: {r: 0.5849056, g: 0.44316256, b: 0.20692417, a: 1}
+    - _Bottom_Color: {r: 0.8773585, g: 0.72897387, b: 0.39315593, a: 1}
     - _Color: {r: 0.96, g: 0.72, b: 0.055, a: 1}
-    - _Color_Variation: {r: 0.5283019, g: 0.41558385, b: 0.15699537, a: 1}
+    - _Color_Variation: {r: 0.2924528, g: 0.22718093, b: 0.07863118, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Grass_Interaction_Center: {r: 0, g: 0, b: 0, a: 0}
     - _Grass_Interaction_Motion: {r: 0, g: 0, b: 0, a: 0}
     - _Grass_Interaction_Trail: {r: 0, g: 0, b: 0, a: 0}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
-    - _Top_Color: {r: 1, g: 0.7782632, b: 0.2688679, a: 1}
+    - _Top_Color: {r: 0.58431375, g: 0.44313726, b: 0.20784314, a: 1}
     - _Variation_Offset: {r: 1, g: 1, b: 0, a: 0}
-    - _Wind_Color: {r: 0.8627451, g: 0.7647059, b: 0.48235294, a: 0.25}
+    - _Wind_Color: {r: 0.3962264, g: 0.30903888, b: 0.057938762, a: 0.25}
     - _Wind_Direction: {r: 60, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

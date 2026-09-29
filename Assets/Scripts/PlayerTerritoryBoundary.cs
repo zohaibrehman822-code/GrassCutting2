@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
-using UnityEngine.Rendering;
 
 /// <summary>
 /// Builds a pooled boundary around the current level's player territory.
@@ -27,7 +26,6 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     private sealed class WallSegment
     {
         public Transform Transform;
-        public MeshRenderer Renderer;
         public BoxCollider Collider;
         public NavMeshObstacle Obstacle;
     }
@@ -36,21 +34,14 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     [Tooltip("Assigned by GameManager, or found inside this level prefab.")]
     [SerializeField] private TerritoryManager territoryManager;
 
-    [Header("Wall Appearance")]
-    [Tooltip("Wall height = this multiplier * TerritoryManager.CellSize.")]
-    [Range(0.1f, 2f)]
+    [Header("Blocking Wall")]
+    [Tooltip("Invisible blocking height = this multiplier * TerritoryManager.CellSize.")]
+    [Range(0.1f, 5f)]
     [SerializeField] private float wallHeightMultiplier = 0.5f;
 
-    [Tooltip("Wall thickness = this multiplier * TerritoryManager.CellSize.")]
+    [Tooltip("Invisible blocking thickness = this multiplier * TerritoryManager.CellSize.")]
     [Range(0.02f, 0.3f)]
     [SerializeField] private float wallThicknessMultiplier = 0.1f;
-
-    [Tooltip("Optional material. Leave empty to use a simple generated one.")]
-    [SerializeField] private Material wallMaterial;
-
-    [SerializeField] private Color wallColor = new Color(0.2f, 0.9f, 1f, 1f);
-
-    [SerializeField] private bool castShadows = false;
 
     [Header("Blocking (NavMeshObstacle)")]
     [Tooltip("If true, obstacles carve holes in the NavMesh so enemies path around walls. Only carves while the segment is stationary, which matches how rebuilds work here (infrequent, not per-frame).")]
@@ -68,9 +59,6 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     // Pooled wall segments. Grown on demand, never destroyed during rebuilds.
     private readonly List<WallSegment> wallPool = new List<WallSegment>(64);
     private Transform wallPoolRoot;
-    private Material runtimeMaterial;
-
-    private static Mesh sharedCubeMesh;
 
     private bool isActive;
     private bool isRebuilding;
@@ -113,15 +101,8 @@ public class PlayerTerritoryBoundary : MonoBehaviour
         GameObject segmentObject = new GameObject($"WallSegment_{index}");
         segmentObject.transform.SetParent(wallPoolRoot, false);
 
-        MeshFilter meshFilter = segmentObject.AddComponent<MeshFilter>();
-        meshFilter.sharedMesh = GetSharedCubeMesh();
-
-        MeshRenderer meshRenderer = segmentObject.AddComponent<MeshRenderer>();
-        meshRenderer.sharedMaterial = GetOrCreateMaterial();
-        meshRenderer.shadowCastingMode =
-            castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
-        meshRenderer.receiveShadows = false;
-
+        // Keep the exact grid boundary for physics/navigation and capture.
+        // PlayerTerritoryRenderer draws the always-visible border separately.
         BoxCollider boxCollider = segmentObject.AddComponent<BoxCollider>();
         boxCollider.center = Vector3.zero;
         boxCollider.size = Vector3.one;
@@ -138,7 +119,6 @@ public class PlayerTerritoryBoundary : MonoBehaviour
         return new WallSegment
         {
             Transform = segmentObject.transform,
-            Renderer = meshRenderer,
             Collider = boxCollider,
             Obstacle = obstacle
         };
@@ -222,6 +202,7 @@ public class PlayerTerritoryBoundary : MonoBehaviour
         {
             wallPool[i].Transform.gameObject.SetActive(false);
         }
+
     }
 
 
@@ -234,10 +215,6 @@ public class PlayerTerritoryBoundary : MonoBehaviour
             Destroy(wallPoolRoot.gameObject);
         }
 
-        if (runtimeMaterial != null)
-        {
-            Destroy(runtimeMaterial);
-        }
     }
 
     /// <summary>
@@ -245,7 +222,7 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     /// player's owned territory. An edge exists wherever an owned cell
     /// is adjacent to a cell that is NOT owned (including outside the map).
     /// </summary>
-    /// 
+    ///
     public void RefreshBoundaryEdges()
     {
         currentEdges.Clear();
@@ -414,7 +391,7 @@ public class PlayerTerritoryBoundary : MonoBehaviour
     /// match currentEdges. Grows the pool with new segments only when more
     /// are needed; never destroys segments, only activates/deactivates them.
     /// </summary>
-    /// 
+    ///
 
 
     private void EnsureWallPoolCapacity(int required)
@@ -434,57 +411,11 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
 
 
-    private Material GetOrCreateMaterial()
-    {
-        if (wallMaterial != null)
-        {
-            return wallMaterial;
-        }
 
-        if (runtimeMaterial != null)
-        {
-            return runtimeMaterial;
-        }
 
-        Shader shader =
-            Shader.Find("Universal Render Pipeline/Lit") ??
-            Shader.Find("Standard") ??
-            Shader.Find("Diffuse");
 
-        runtimeMaterial = new Material(shader);
 
-        if (runtimeMaterial.HasProperty("_BaseColor"))
-        {
-            runtimeMaterial.SetColor("_BaseColor", wallColor);
-        }
 
-        if (runtimeMaterial.HasProperty("_Color"))
-        {
-            runtimeMaterial.color = wallColor;
-        }
-
-        return runtimeMaterial;
-    }
-
-    private static Mesh GetSharedCubeMesh()
-    {
-        if (sharedCubeMesh == null)
-        {
-            GameObject temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            sharedCubeMesh = temp.GetComponent<MeshFilter>().sharedMesh;
-
-            if (Application.isPlaying)
-            {
-                Destroy(temp);
-            }
-            else
-            {
-                DestroyImmediate(temp);
-            }
-        }
-
-        return sharedCubeMesh;
-    }
 
     /// <summary>
     /// Public entry point later steps (activation, territory-change hook)
@@ -679,6 +610,7 @@ public class PlayerTerritoryBoundary : MonoBehaviour
 
         currentEdges.Clear();
         captureWallEdges.Clear();
+
     }
 
     private void HandleTerritoryChanged()

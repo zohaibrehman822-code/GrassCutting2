@@ -66,6 +66,38 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     [SerializeField]
     private bool receiveShadows;
 
+    [Header("Captured Territory Border (Visual Only)")]
+    [Tooltip("Always show a rounded border around this owner's captured cells. Independent of power-ups.")]
+    [SerializeField] private bool showCapturedBorder = true;
+
+    [SerializeField, Range(0.05f, 2f)] private float borderHeightMultiplier = 0.3f;
+    [SerializeField, Range(0.02f, 0.3f)] private float borderThicknessMultiplier = 0.24f;
+    [Tooltip("Extra outward clearance in territory cells, beyond the grass mesh footprint. Visual only.")]
+    [SerializeField, Range(0f, 1f)] private float borderOutwardOffsetMultiplier = 0.025f;
+    [SerializeField, Range(0f, 3f)] private float borderCornerRadiusMultiplier = 1f;
+    [SerializeField, Range(2, 16)] private int borderCurveSegments = 8;
+
+    [Tooltip("Optional border material template. A runtime copy is used; the asset is not changed.")]
+    [SerializeField] private Material borderMaterial;
+    [SerializeField] private bool borderUsesGrassColor = true;
+    [SerializeField] private Color borderColor = new Color(0.65f, 0.85f, 0.22f, 1f);
+
+    private GameObject borderObject;
+    private Mesh borderMesh;
+    private MeshRenderer borderRenderer;
+    private Material runtimeBorderMaterial;
+    private GrassCutGrid borderGrassGrid;
+    private readonly List<Matrix4x4> borderFringeMatrices = new List<Matrix4x4>();
+    private readonly List<Matrix4x4[]> borderFringeBatches = new List<Matrix4x4[]>();
+
+    private struct CellGrassOverhang
+    {
+        public float East, West, North, South;
+    }
+
+    private readonly Dictionary<Vector2Int, CellGrassOverhang> cellGrassOverhangs =
+        new Dictionary<Vector2Int, CellGrassOverhang>();
+
     private const int MaxInstancesPerBatch = 1023;
 
     private struct GrowingBlade
@@ -116,6 +148,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
 
         territoryManager = manager;
         territoryCellSize = cellSize;
+        borderGrassGrid = manager != null ? manager.GrassGrid : null;
 
         if (playerTerritoryPrefabGrass == null)
         {
@@ -179,8 +212,8 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     }
 
 
-public void Rebuild(
-    IReadOnlyCollection<Vector2Int> cells)
+    public void Rebuild(
+        IReadOnlyCollection<Vector2Int> cells)
     {
         if (territoryManager == null ||
             grassMesh == null ||
@@ -224,6 +257,9 @@ public void Rebuild(
                 animationStartTime
             );
         }
+
+        // New cells now have their actual grass placement/scale recorded.
+        RebuildCapturedBorder(cells);
 
         if (matrices.Count ==
             firstNewMatrix)
@@ -293,6 +329,9 @@ public void Rebuild(
         float cellMinimumZ =
             cellCenter.z -
             territoryCellSize * 0.5f;
+
+        Bounds bladeBounds = grassMesh.bounds;
+        CellGrassOverhang overhang = new CellGrassOverhang();
 
         for (int x = 0;
              x < bladesPerAxis;
@@ -375,6 +414,20 @@ public void Rebuild(
                         )
                         : Quaternion.identity;
 
+                Vector3 boundsCenter = position + rotation * Vector3.Scale(bladeBounds.center, targetScale);
+                Vector3 right = rotation * Vector3.right;
+                Vector3 forward = rotation * Vector3.forward;
+                float extentX = Mathf.Abs(right.x) * bladeBounds.extents.x * Mathf.Abs(targetScale.x) +
+                    Mathf.Abs(forward.x) * bladeBounds.extents.z * Mathf.Abs(targetScale.z);
+                float extentZ = Mathf.Abs(right.z) * bladeBounds.extents.x * Mathf.Abs(targetScale.x) +
+                    Mathf.Abs(forward.z) * bladeBounds.extents.z * Mathf.Abs(targetScale.z);
+                overhang.East = Mathf.Max(overhang.East,
+                    boundsCenter.x + extentX - cellMinimumX - territoryCellSize);
+                overhang.West = Mathf.Max(overhang.West, cellMinimumX - boundsCenter.x + extentX);
+                overhang.North = Mathf.Max(overhang.North,
+                    boundsCenter.z + extentZ - cellMinimumZ - territoryCellSize);
+                overhang.South = Mathf.Max(overhang.South, cellMinimumZ - boundsCenter.z + extentZ);
+
                 AddGrassInstance(
                     position,
                     rotation,
@@ -386,13 +439,14 @@ public void Rebuild(
                 );
             }
         }
+        cellGrassOverhangs[cell] = overhang;
     }
 
     /// <summary>
     /// Supplements only the cleared edge and blade-radius fringe.
     /// Normal cell grass already fills the interior.
     /// </summary>
-    /// 
+    ///
     private bool AddCutFringeGrass(
     IReadOnlyList<Vector3> cutPositions,
     bool animate,
@@ -571,6 +625,220 @@ public void Rebuild(
                 )
             );
         }
+    }
+
+    private void RebuildCapturedBorder(IReadOnlyCollection<Vector2Int> cells)
+    {
+        if (!showCapturedBorder || cells.Count == 0)
+        {
+            if (borderObject != null) borderObject.SetActive(false);
+            ClearBorderGrass();
+            return;
+        }
+
+        if (borderObject == null)
+        {
+            if (borderMesh != null) Destroy(borderMesh);
+            if (runtimeBorderMaterial != null) Destroy(runtimeBorderMaterial);
+            borderObject = new GameObject(name + "_CapturedTerritoryBorder");
+            // Enemy renderers are children of moving enemies. Anchor the mesh
+            // to the level instead so it stays with the captured land.
+            borderObject.transform.SetParent(territoryManager.transform, false);
+            borderObject.layer = gameObject.layer;
+            MeshFilter filter = borderObject.AddComponent<MeshFilter>();
+            borderRenderer = borderObject.AddComponent<MeshRenderer>();
+            borderMesh = new Mesh { name = name + " Territory Border" };
+            borderMesh.MarkDynamic();
+            filter.sharedMesh = borderMesh;
+
+            if (borderMaterial != null)
+            {
+                runtimeBorderMaterial = new Material(borderMaterial);
+            }
+            else
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Standard") ?? Shader.Find("Diffuse");
+                if (shader == null)
+                {
+                    Debug.LogWarning("PlayerTerritoryRenderer: No border shader available.", this);
+                    borderObject.SetActive(false);
+                    return;
+                }
+                runtimeBorderMaterial = new Material(shader);
+                if (runtimeBorderMaterial.HasProperty("_Smoothness"))
+                    runtimeBorderMaterial.SetFloat("_Smoothness", 0.15f);
+            }
+            borderRenderer.sharedMaterial = runtimeBorderMaterial;
+        }
+
+        if (runtimeBorderMaterial == null) return;
+
+        if (borderObject.transform.parent != territoryManager.transform)
+            borderObject.transform.SetParent(territoryManager.transform, false);
+
+        Color color = borderColor;
+        if (borderUsesGrassColor && grassMaterial != null)
+        {
+            // The project's grass shader uses these gradient properties;
+            // legacy _BaseColor/_Color values may not describe the visible grass.
+            if (grassMaterial.HasProperty("_Bottom_Color"))
+            {
+                color = grassMaterial.GetColor("_Bottom_Color");
+                if (grassMaterial.HasProperty("_Top_Color"))
+                    color = Color.Lerp(color, grassMaterial.GetColor("_Top_Color"), 0.25f);
+            }
+            else if (grassMaterial.HasProperty("_BaseColor"))
+                color = grassMaterial.GetColor("_BaseColor");
+            else if (grassMaterial.HasProperty("_Color"))
+                color = grassMaterial.GetColor("_Color");
+            else if (grassMaterial.HasProperty("_Top_Color"))
+                color = grassMaterial.GetColor("_Top_Color");
+        }
+        color.a = 1f;
+        if (runtimeBorderMaterial.HasProperty("_BaseColor"))
+            runtimeBorderMaterial.SetColor("_BaseColor", color);
+        if (runtimeBorderMaterial.HasProperty("_Color"))
+            runtimeBorderMaterial.SetColor("_Color", color);
+
+        // The blades are inset from cell edges. Only their actual overhang
+        // needs clearance, not the entire mesh radius plus extra curve padding.
+        HashSet<Vector2Int> owned = cells as HashSet<Vector2Int> ?? new HashSet<Vector2Int>(cells);
+        float footprint = 0f;
+        foreach (Vector2Int cell in owned)
+        {
+            if (!cellGrassOverhangs.TryGetValue(cell, out CellGrassOverhang overhang)) continue;
+            bool east = !owned.Contains(cell + Vector2Int.right);
+            bool west = !owned.Contains(cell + Vector2Int.left);
+            bool north = !owned.Contains(cell + Vector2Int.up);
+            bool south = !owned.Contains(cell + Vector2Int.down);
+            if (east) footprint = Mathf.Max(footprint, overhang.East);
+            if (west) footprint = Mathf.Max(footprint, overhang.West);
+            if (north) footprint = Mathf.Max(footprint, overhang.North);
+            if (south) footprint = Mathf.Max(footprint, overhang.South);
+            // Include corner overhang without making every cell pay for the
+            // largest possible random rotation and scale of the whole prefab.
+            if (east && north) footprint = Mathf.Max(footprint, new Vector2(overhang.East, overhang.North).magnitude);
+            if (east && south) footprint = Mathf.Max(footprint, new Vector2(overhang.East, overhang.South).magnitude);
+            if (west && north) footprint = Mathf.Max(footprint, new Vector2(overhang.West, overhang.North).magnitude);
+            if (west && south) footprint = Mathf.Max(footprint, new Vector2(overhang.West, overhang.South).magnitude);
+        }
+        float outwardClearance = footprint +
+            Mathf.Max(0f, borderOutwardOffsetMultiplier) * territoryCellSize;
+
+        List<TerritoryBorderMesh.Contour> contours = TerritoryBorderMesh.Rebuild(
+            borderMesh, territoryManager, cells,
+            borderObject.transform.worldToLocalMatrix,
+            Mathf.Max(0.01f, borderHeightMultiplier * territoryCellSize),
+            Mathf.Max(0.01f, borderThicknessMultiplier * territoryCellSize),
+            borderCornerRadiusMultiplier, borderCurveSegments, outwardClearance
+        );
+        RebuildBorderGrass(owned, contours, outwardClearance);
+        if (borderGrassGrid != null)
+            borderGrassGrid.SetTerritoryBorderMask(this, isActiveAndEnabled ? contours : null);
+        borderRenderer.shadowCastingMode = castShadows
+            ? ShadowCastingMode.On : ShadowCastingMode.Off;
+        borderRenderer.receiveShadows = false;
+        if (runtimeBorderMaterial.HasProperty("_ReceiveShadows"))
+            runtimeBorderMaterial.SetFloat("_ReceiveShadows", 0f);
+        runtimeBorderMaterial.EnableKeyword("_RECEIVE_SHADOWS_OFF");
+        borderObject.SetActive(isActiveAndEnabled && borderMesh.vertexCount > 0);
+    }
+
+    private void ClearBorderGrass()
+    {
+        borderFringeMatrices.Clear();
+        if (borderGrassGrid != null) borderGrassGrid.SetTerritoryBorderMask(this, null);
+    }
+
+    private void RebuildBorderGrass(
+        HashSet<Vector2Int> owned, IReadOnlyList<TerritoryBorderMesh.Contour> contours,
+        float clearance)
+    {
+        borderFringeMatrices.Clear();
+        if (!isActiveAndEnabled || contours.Count == 0) return;
+
+        HashSet<Vector2Int> candidates = new HashSet<Vector2Int>();
+        int range = Mathf.Max(1, Mathf.CeilToInt(clearance / territoryCellSize) + 1);
+        foreach (Vector2Int cell in owned)
+        {
+            if (owned.Contains(cell + Vector2Int.right) && owned.Contains(cell + Vector2Int.left) &&
+                owned.Contains(cell + Vector2Int.up) && owned.Contains(cell + Vector2Int.down)) continue;
+            for (int x = -range; x <= range; x++)
+                for (int z = -range; z <= range; z++)
+                {
+                    Vector2Int candidate = cell + new Vector2Int(x, z);
+                    if (!owned.Contains(candidate)) candidates.Add(candidate);
+                }
+        }
+
+        int rows = Mathf.Max(1, Mathf.RoundToInt(territoryCellSize / Mathf.Max(0.02f, grassSpacing)));
+        float step = territoryCellSize / rows;
+        Bounds bounds = grassMesh.bounds;
+        float meshRadius = new Vector2(
+            Mathf.Max(Mathf.Abs(bounds.min.x), Mathf.Abs(bounds.max.x)),
+            Mathf.Max(Mathf.Abs(bounds.min.z), Mathf.Abs(bounds.max.z))
+        ).magnitude;
+        Bounds playBounds = territoryManager.PlayArea.bounds;
+        foreach (Vector2Int cell in candidates)
+        {
+            Vector3 centre = territoryManager.CellToWorld(cell);
+            for (int x = 0; x < rows; x++)
+                for (int z = 0; z < rows; z++)
+                {
+                    Vector3 position = centre + new Vector3(
+                        (x + 0.5f) * step - territoryCellSize * 0.5f, 0f,
+                        (z + 0.5f) * step - territoryCellSize * 0.5f
+                    );
+                    if (position.x < playBounds.min.x || position.x > playBounds.max.x ||
+                        position.z < playBounds.min.z || position.z > playBounds.max.z) continue;
+                    // Decoration must not repaint another owner's captured land.
+                    if (territoryManager.IsInsideTerritory(position) ||
+                        territoryManager.IsInsideEnemyTerritory(position)) continue;
+                    if (!TerritoryBorderMesh.Contains(contours, position, false)) continue;
+                    float distance = Mathf.Sqrt(TerritoryBorderMesh.DistanceSquared(contours, position, false));
+                    float scale = Mathf.Lerp(scaleRange.x, scaleRange.y, RandomValue(cell, x, z, 2));
+                    float horizontalScale = meshRadius > 0.00001f
+                        ? Mathf.Min(scale, distance * 0.85f / meshRadius) : scale;
+                    if (horizontalScale <= 0.001f) continue;
+                    Quaternion rotation = randomYRotation
+                        ? Quaternion.Euler(0f, RandomValue(cell, x, z, 3) * 360f, 0f) : Quaternion.identity;
+                    borderFringeMatrices.Add(Matrix4x4.TRS(position, rotation,
+                        new Vector3(horizontalScale, scale * heightMultiplier, horizontalScale)));
+                }
+        }
+
+        int count = (borderFringeMatrices.Count + MaxInstancesPerBatch - 1) / MaxInstancesPerBatch;
+        while (borderFringeBatches.Count < count)
+            borderFringeBatches.Add(new Matrix4x4[MaxInstancesPerBatch]);
+        for (int i = 0; i < borderFringeMatrices.Count; i++)
+            borderFringeBatches[i / MaxInstancesPerBatch][i % MaxInstancesPerBatch] = borderFringeMatrices[i];
+    }
+
+    private void OnEnable()
+    {
+        if (borderObject != null)
+            borderObject.SetActive(showCapturedBorder && renderedCells.Count > 0);
+        if (hasBuiltOnce && territoryManager != null && grassMaterial != null)
+            RebuildCapturedBorder(renderedCells);
+    }
+
+    private void OnDisable()
+    {
+        if (borderObject != null) borderObject.SetActive(false);
+        ClearBorderGrass();
+    }
+
+    private void OnDestroy()
+    {
+        ClearBorderGrass();
+        if (borderObject != null)
+        {
+            borderObject.SetActive(false);
+            Destroy(borderObject);
+        }
+        if (borderMesh != null) Destroy(borderMesh);
+        if (runtimeBorderMaterial != null) Destroy(runtimeBorderMaterial);
     }
 
     private void Update()
@@ -775,6 +1043,12 @@ public void Rebuild(
                 gameObject.layer
             );
         }
+        for (int i = 0; i * MaxInstancesPerBatch < borderFringeMatrices.Count; i++)
+        {
+            int count = Mathf.Min(MaxInstancesPerBatch, borderFringeMatrices.Count - i * MaxInstancesPerBatch);
+            Graphics.DrawMeshInstanced(grassMesh, 0, grassMaterial, borderFringeBatches[i], count,
+                null, shadowMode, receiveShadows, gameObject.layer);
+        }
     }
 
     private float RandomValue(
@@ -898,11 +1172,28 @@ public void Rebuild(
             cutAny = true;
         }
 
+        for (int i = 0; i < borderFringeMatrices.Count; i++)
+        {
+            Matrix4x4 matrix = borderFringeMatrices[i];
+            if (matrix.GetColumn(0).sqrMagnitude <= 0.00000001f) continue;
+            Vector4 translation = matrix.GetColumn(3);
+            float dx = translation.x - worldPosition.x, dz = translation.z - worldPosition.z;
+            if (dx * dx + dz * dz > radiusSqr) continue;
+            matrix.SetColumn(0, Vector4.zero);
+            matrix.SetColumn(1, Vector4.zero);
+            matrix.SetColumn(2, Vector4.zero);
+            borderFringeMatrices[i] = matrix;
+            borderFringeBatches[i / MaxInstancesPerBatch][i % MaxInstancesPerBatch] = matrix;
+            cutAny = true;
+        }
         return cutAny;
     }
 
     public void Clear()
     {
+        ClearBorderGrass();
+        if (borderObject != null) borderObject.SetActive(false);
+        cellGrassOverhangs.Clear();
         growingBlades.Clear();
         renderedCells.Clear();
         cutMatrixIndices.Clear();
@@ -937,5 +1228,382 @@ public void Rebuild(
         Rebuild(cells);
 
         animateStartingTerritory = previousAnimateStart;
+    }
+}
+
+
+/// <summary>
+/// Shared visual-only geometry. It never changes ownership or creates colliders.
+/// </summary>
+internal static class TerritoryBorderMesh
+{
+    internal sealed class Contour
+    {
+        public List<Vector3> Inner;
+        public List<Vector3> Outer;
+    }
+
+    internal static bool Contains(IReadOnlyList<Contour> contours, Vector3 point, bool outer)
+    {
+        bool inside = false;
+        foreach (Contour contour in contours)
+        {
+            List<Vector3> points = outer ? contour.Outer : contour.Inner;
+            for (int i = 0, j = points.Count - 1; i < points.Count; j = i++)
+            {
+                Vector3 a = points[i], b = points[j];
+                if ((a.z > point.z) != (b.z > point.z) &&
+                    point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x)
+                    inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    internal static float DistanceSquared(IReadOnlyList<Contour> contours, Vector3 point, bool outer)
+    {
+        float minimum = float.PositiveInfinity;
+        Vector2 position = new Vector2(point.x, point.z);
+        foreach (Contour contour in contours)
+        {
+            List<Vector3> points = outer ? contour.Outer : contour.Inner;
+            for (int i = 0; i < points.Count; i++)
+            {
+                Vector3 start = points[i], end = points[(i + 1) % points.Count];
+                Vector2 a = new Vector2(start.x, start.z), b = new Vector2(end.x, end.z);
+                Vector2 delta = b - a;
+                float t = delta.sqrMagnitude > 0.00000001f
+                    ? Mathf.Clamp01(Vector2.Dot(position - a, delta) / delta.sqrMagnitude) : 0f;
+                minimum = Mathf.Min(minimum, (position - a - delta * t).sqrMagnitude);
+            }
+        }
+        return minimum;
+    }
+
+    private enum EdgeDirection
+    {
+        East,
+        West,
+        North,
+        South
+    }
+
+    private struct BoundaryEdge
+    {
+        public Vector2Int Cell;
+        public EdgeDirection Direction;
+    }
+
+    internal static List<Contour> Rebuild(
+        Mesh mesh, TerritoryManager manager, IReadOnlyCollection<Vector2Int> cells,
+        Matrix4x4 worldToLocal, float height, float thickness,
+        float cornerRadiusMultiplier, int cornerCurveSegments, float outwardClearance)
+    {
+        HashSet<Vector2Int> owned = cells as HashSet<Vector2Int>
+            ?? new HashSet<Vector2Int>(cells);
+        List<BoundaryEdge> edges = new List<BoundaryEdge>();
+        foreach (Vector2Int cell in owned)
+        {
+            if (!owned.Contains(cell + Vector2Int.right))
+                edges.Add(new BoundaryEdge { Cell = cell, Direction = EdgeDirection.East });
+            if (!owned.Contains(cell + Vector2Int.left))
+                edges.Add(new BoundaryEdge { Cell = cell, Direction = EdgeDirection.West });
+            if (!owned.Contains(cell + Vector2Int.up))
+                edges.Add(new BoundaryEdge { Cell = cell, Direction = EdgeDirection.North });
+            if (!owned.Contains(cell + Vector2Int.down))
+                edges.Add(new BoundaryEdge { Cell = cell, Direction = EdgeDirection.South });
+        }
+        List<List<Vector2Int>> loops = TraceBoundaryLoops(edges);
+        List<Vector3> vertices = new List<Vector3>();
+        List<int> triangles = new List<int>();
+        List<Vector2> uv = new List<Vector2>();
+        List<Vector2Int> seams = new List<Vector2Int>();
+        List<Contour> contours = new List<Contour>();
+        float cellSize = manager.CellSize;
+
+        foreach (List<Vector2Int> loop in loops)
+        {
+            List<Vector3> points = new List<Vector3>(loop.Count);
+            foreach (Vector2Int corner in loop)
+            {
+                Vector3 point = manager.CellToWorld(corner);
+                point.x -= cellSize * 0.5f;
+                point.z -= cellSize * 0.5f;
+                points.Add(point);
+            }
+
+            float radius = Mathf.Max(0f, cornerRadiusMultiplier) * cellSize;
+            // Keep the inner face from folding over itself on very tight arcs.
+            if (radius > 0f) radius = Mathf.Max(radius, thickness * 1.25f);
+            // Offset the original polygon BEFORE rounding. Offsetting an
+            // already-rounded concave arc can fold it back over itself.
+            List<Vector3> expanded = OffsetBoundaryLoop(
+                points, Mathf.Max(0f, outwardClearance)
+            );
+            List<Vector3> rounded = RoundBoundaryLoop(
+                expanded, radius, Mathf.Clamp(cornerCurveSegments, 2, 16), out _,
+                Mathf.Max(0.001f, outwardClearance)
+            );
+            List<Vector3> outer = new List<Vector3>(rounded.Count);
+            for (int i = 0; i < rounded.Count; i++)
+            {
+                Vector3 point = rounded[i];
+                Vector3 incoming = (point - rounded[(i + rounded.Count - 1) % rounded.Count]).normalized;
+                Vector3 outgoing = (rounded[(i + 1) % rounded.Count] - point).normalized;
+                Vector3 leftIncoming = new Vector3(-incoming.z, 0f, incoming.x);
+                Vector3 leftOutgoing = new Vector3(-outgoing.z, 0f, outgoing.x);
+                Vector3 left = (leftIncoming + leftOutgoing).normalized;
+                if (left.sqrMagnitude < 0.000001f) left = leftOutgoing;
+                outer.Add(point - left * thickness / Mathf.Max(0.5f, Vector3.Dot(left, leftOutgoing)));
+            }
+            contours.Add(new Contour { Inner = rounded, Outer = outer });
+
+            int firstVertex = vertices.Count;
+            AppendBorderMesh(
+                rounded, height, thickness,
+                worldToLocal,
+                vertices, triangles, uv
+            );
+            if (vertices.Count > firstVertex)
+                seams.Add(new Vector2Int(firstVertex, vertices.Count - 8));
+        }
+
+        mesh.Clear();
+        mesh.indexFormat = vertices.Count > 65535
+            ? IndexFormat.UInt32 : IndexFormat.UInt16;
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
+        mesh.SetUVs(0, uv);
+        mesh.RecalculateNormals();
+        Vector3[] normals = mesh.normals;
+        foreach (Vector2Int seam in seams)
+        {
+            for (int faceVertex = 0; faceVertex < 8; faceVertex++)
+            {
+                Vector3 normal = (normals[seam.x + faceVertex] + normals[seam.y + faceVertex]).normalized;
+                normals[seam.x + faceVertex] = normal;
+                normals[seam.y + faceVertex] = normal;
+            }
+        }
+        mesh.normals = normals;
+        mesh.RecalculateBounds();
+        return contours;
+    }
+
+    private static void GetDirectedCorners(
+        BoundaryEdge edge, out Vector2Int start, out Vector2Int end)
+    {
+        // Owned territory is always on the left of each directed edge.
+        Vector2Int cell = edge.Cell;
+        switch (edge.Direction)
+        {
+            case EdgeDirection.East:
+                start = cell + Vector2Int.right;
+                end = cell + Vector2Int.one;
+                break;
+            case EdgeDirection.North:
+                start = cell + Vector2Int.one;
+                end = cell + Vector2Int.up;
+                break;
+            case EdgeDirection.West:
+                start = cell + Vector2Int.up;
+                end = cell;
+                break;
+            default:
+                start = cell;
+                end = cell + Vector2Int.right;
+                break;
+        }
+    }
+
+    private static List<List<Vector2Int>> TraceBoundaryLoops(List<BoundaryEdge> edges)
+    {
+        Dictionary<Vector2Int, List<int>> outgoing =
+            new Dictionary<Vector2Int, List<int>>();
+        Vector2Int[] starts = new Vector2Int[edges.Count];
+        Vector2Int[] ends = new Vector2Int[edges.Count];
+        bool[] visited = new bool[edges.Count];
+
+        for (int i = 0; i < edges.Count; i++)
+        {
+            GetDirectedCorners(edges[i], out starts[i], out ends[i]);
+            if (!outgoing.TryGetValue(starts[i], out List<int> candidates))
+            {
+                candidates = new List<int>(2);
+                outgoing.Add(starts[i], candidates);
+            }
+            candidates.Add(i);
+        }
+
+        List<List<Vector2Int>> loops = new List<List<Vector2Int>>();
+        for (int first = 0; first < edges.Count; first++)
+        {
+            if (visited[first]) continue;
+
+            List<Vector2Int> loop = new List<Vector2Int>();
+            int current = first;
+            bool closed = false;
+            for (int step = 0; step < edges.Count; step++)
+            {
+                visited[current] = true;
+                loop.Add(starts[current]);
+                Vector2Int endpoint = ends[current];
+                if (endpoint == starts[first])
+                {
+                    closed = true;
+                    break;
+                }
+
+                if (!outgoing.TryGetValue(endpoint, out List<int> candidates)) break;
+                Vector2Int direction = endpoint - starts[current];
+                int next = -1;
+                int bestTurn = int.MinValue;
+                foreach (int candidate in candidates)
+                {
+                    if (visited[candidate]) continue;
+                    Vector2Int nextDirection = ends[candidate] - endpoint;
+                    int cross = direction.x * nextDirection.y - direction.y * nextDirection.x;
+                    int dot = direction.x * nextDirection.x + direction.y * nextDirection.y;
+                    int rank = cross > 0 ? 3 : dot > 0 ? 2 : cross < 0 ? 1 : 0;
+                    // A left turn keeps diagonally touching islands separate.
+                    if (rank > bestTurn)
+                    {
+                        bestTurn = rank;
+                        next = candidate;
+                    }
+                }
+                if (next < 0) break;
+                current = next;
+            }
+
+            if (closed && loop.Count >= 4) loops.Add(loop);
+        }
+        return loops;
+    }
+
+    private static List<Vector3> OffsetBoundaryLoop(List<Vector3> points, float distance)
+    {
+        List<Vector3> result = new List<Vector3>(points.Count);
+        for (int i = 0; i < points.Count; i++)
+        {
+            Vector3 incoming = (points[i] - points[(i + points.Count - 1) % points.Count]).normalized;
+            Vector3 outgoing = (points[(i + 1) % points.Count] - points[i]).normalized;
+            Vector3 rightIncoming = new Vector3(incoming.z, 0f, -incoming.x);
+            Vector3 rightOutgoing = new Vector3(outgoing.z, 0f, -outgoing.x);
+            Vector3 right = (rightIncoming + rightOutgoing).normalized;
+            if (right.sqrMagnitude < 0.000001f) right = rightOutgoing;
+            float miter = 1f / Mathf.Max(0.5f, Vector3.Dot(right, rightOutgoing));
+            result.Add(points[i] + right * distance * miter);
+        }
+        return result;
+    }
+
+    private static List<Vector3> RoundBoundaryLoop(
+        List<Vector3> points, float radius, int subdivisions, out float maximumInset,
+        float maximumConvexInset = float.PositiveInfinity)
+    {
+        maximumInset = 0f;
+        List<Vector3> corners = new List<Vector3>();
+        for (int i = 0; i < points.Count; i++)
+        {
+            Vector3 incoming = points[i] - points[(i + points.Count - 1) % points.Count];
+            Vector3 outgoing = points[(i + 1) % points.Count] - points[i];
+            if (Vector3.Cross(incoming, outgoing).sqrMagnitude > 0.00000001f)
+                corners.Add(points[i]);
+        }
+
+        List<Vector3> result = new List<Vector3>();
+        subdivisions = Mathf.Max(2, subdivisions);
+        for (int i = 0; i < corners.Count; i++)
+        {
+            Vector3 point = corners[i];
+            Vector3 incoming = point - corners[(i + corners.Count - 1) % corners.Count];
+            Vector3 outgoing = corners[(i + 1) % corners.Count] - point;
+            float inset = Mathf.Min(radius, Mathf.Min(incoming.magnitude, outgoing.magnitude) * 0.45f);
+            if (incoming.x * outgoing.z - incoming.z * outgoing.x > 0f)
+                inset = Mathf.Min(inset, maximumConvexInset);
+            maximumInset = Mathf.Max(maximumInset, inset);
+            if (inset <= 0.00001f)
+            {
+                result.Add(point);
+                continue;
+            }
+
+            Vector3 start = point - incoming.normalized * inset;
+            Vector3 end = point + outgoing.normalized * inset;
+            // Rational quadratic Bezier: an actual circular quarter-arc,
+            // tangent to both adjoining straight edges (grid turns are 90 degrees).
+            const float weight = 0.70710678f;
+            for (int sample = 0; sample <= subdivisions; sample++)
+            {
+                float t = sample / (float)subdivisions;
+                float inverse = 1f - t;
+                float denominator = inverse * inverse + 2f * weight * inverse * t + t * t;
+                result.Add((inverse * inverse * start + 2f * weight * inverse * t * point + t * t * end) / denominator);
+            }
+        }
+        return result;
+    }
+
+    private static void AppendBorderMesh(
+        List<Vector3> points, float height, float thickness, Matrix4x4 worldToLocal,
+        List<Vector3> vertices, List<int> triangles, List<Vector2> uv)
+    {
+        if (points.Count < 3) return;
+        int firstVertex = vertices.Count;
+        float distance = 0f;
+        for (int i = 0; i <= points.Count; i++)
+        {
+            int index = i % points.Count;
+            Vector3 point = points[index];
+            Vector3 previous = points[(index + points.Count - 1) % points.Count];
+            Vector3 next = points[(index + 1) % points.Count];
+            Vector3 incoming = (point - previous).normalized;
+            Vector3 outgoing = (next - point).normalized;
+            Vector3 leftIncoming = new Vector3(-incoming.z, 0f, incoming.x);
+            Vector3 leftOutgoing = new Vector3(-outgoing.z, 0f, outgoing.x);
+            Vector3 left = (leftIncoming + leftOutgoing).normalized;
+            if (left.sqrMagnitude < 0.000001f) left = leftOutgoing;
+            float width = thickness * 0.5f / Mathf.Max(0.5f, Vector3.Dot(left, leftOutgoing));
+            // Owned cells are on the left: move both faces to the right,
+            // outside the visible grass, without touching logical ownership.
+            Vector3 bottomLeft = point;
+            Vector3 bottomRight = point - left * width * 2f;
+            Vector3 topLeft = bottomLeft + Vector3.up * height;
+            Vector3 topRight = bottomRight + Vector3.up * height;
+            if (i > 0) distance += Vector3.Distance(previous, point);
+
+            // Separate vertices give a crisp flat top and smooth curved sides.
+            vertices.Add(worldToLocal.MultiplyPoint3x4(topLeft));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(topRight));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(bottomLeft));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(topLeft));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(topRight));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(bottomRight));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(bottomRight));
+            vertices.Add(worldToLocal.MultiplyPoint3x4(bottomLeft));
+            for (int face = 0; face < 4; face++)
+            {
+                uv.Add(new Vector2(distance, 0f));
+                uv.Add(new Vector2(distance, 1f));
+            }
+        }
+
+        for (int i = 0; i < points.Count; i++)
+        {
+            int current = firstVertex + i * 8;
+            int next = current + 8;
+            for (int face = 0; face < 4; face++)
+            {
+                int a = current + face * 2;
+                int b = next + face * 2;
+                triangles.Add(a);
+                triangles.Add(b);
+                triangles.Add(a + 1);
+                triangles.Add(a + 1);
+                triangles.Add(b);
+                triangles.Add(b + 1);
+            }
+        }
     }
 }

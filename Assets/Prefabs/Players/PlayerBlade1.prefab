@@ -48,7 +48,7 @@ MonoBehaviour:
   grassGrid: {fileID: 0}
   territoryRenderer: {fileID: 0}
   trailPointDistance: 0.1
-  enableLineRenderer: 0
+  enableLineRenderer: 1
   trailRenderer: {fileID: 2301712235371876345}
   enableCutGrassTrail: 1
   cuttedGrassPrefab: {fileID: 3355804830755316865, guid: dbd4bb0add8039c4a9268607a6ed42cf, type: 3}
@@ -58,6 +58,7 @@ MonoBehaviour:
   receiveTrailShadows: 0
   territoryTouchRadius: 0.05
   trailKillRadius: 0.3
+  capturedTrailRows: 5
 --- !u!1 &1495124110405377957
 GameObject:
   m_ObjectHideFlags: 0
@@ -144,13 +145,13 @@ LineRenderer:
   - {x: 0, y: 0, z: 1}
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 0.12
+    widthMultiplier: 0.4
     widthCurve:
       serializedVersion: 2
       m_Curve:
       - serializedVersion: 3
-        time: 0.12162162
-        value: 0.1584158
+        time: 0.11867668
+        value: 1
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -250,7 +251,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7417827856478457364}
-  m_Mesh: {fileID: -4341837564618940731, guid: 3386c4f40b180c549a0af2b3a70e5dcb, type: 3}
+  m_Mesh: {fileID: 5029448558569044196, guid: 955526724ac0fea4eab5c840d83805ac, type: 3}
 --- !u!23 &3016805676161063578
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -276,7 +277,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6a95cb903d8b8e941b1f0ddd2944669e, type: 2}
+  - {fileID: 2100000, guid: 959235426e9d4164283cbbf9f2d84e20, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -384,10 +385,11 @@ MonoBehaviour:
   enemyGrassMaterials:
   - {fileID: 2100000, guid: cfbf00a84e0808c438699f622ca61f5f, type: 2}
   - {fileID: 2100000, guid: ff5888357e1e6eb45979a09381c8b702, type: 2}
-  radius: 2.145
-  bendDistance: 0.4
-  responseSpeed: 0.5
-  trailFadeSeconds: 24
+  radius: 0.65
+  bendDistance: 0.18
+  responseSpeed: 8
+  trailFadeSeconds: 1.3
+  spinBendStrength: 0.12
 --- !u!65 &4667817161909148258
 BoxCollider:
   m_ObjectHideFlags: 0

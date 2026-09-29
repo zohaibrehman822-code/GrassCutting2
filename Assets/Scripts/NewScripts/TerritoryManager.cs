@@ -159,6 +159,7 @@ public class TerritoryManager : MonoBehaviour
     }
 
     public float CellSize => cellSize;
+    public GrassCutGrid GrassGrid => grassGrid;
 
     public void RegisterEnemyRenderer(EnemyAI enemy, PlayerTerritoryRenderer renderer)
     {

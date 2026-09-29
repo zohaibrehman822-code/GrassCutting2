@@ -204,7 +204,7 @@ public class GameManager : MonoBehaviour
         Vector3 spawnPosition =
             spawnPoint != null
                 ? spawnPoint.position
-                : new Vector3(0f, 0.64f, 0f);
+                : new Vector3(0f, 0.17f, 0f);
 
         Quaternion spawnRotation =
             spawnPoint != null
@@ -605,7 +605,7 @@ public class GameManager : MonoBehaviour
 
         Vector3 spawnPosition = spawnPoint != null
             ? spawnPoint.position
-            : new Vector3(0f, 0.64f, 0f);
+            : new Vector3(0f, 0.17f, 0f);
 
         Quaternion spawnRotation = spawnPoint != null
             ? spawnPoint.rotation

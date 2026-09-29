@@ -17,18 +17,21 @@ public sealed class GrassPlayerInteraction : MonoBehaviour
 
     [Header("Interaction")]
     [Min(0.1f)]
-    [SerializeField] private float radius = 1.3f;
+    [SerializeField] private float radius = 0.65f;
 
     [Range(0f, 0.4f)]
-    [SerializeField] private float bendDistance = 0.25f;
+    [SerializeField] private float bendDistance = 0.18f;
 
     [Min(0.1f)]
-    [Tooltip("How quickly bending settles after movement stops. Entry is immediate.")]
-    [SerializeField] private float responseSpeed = 1.4f;
+    [Tooltip("How quickly bending follows movement and settles after stopping.")]
+    [SerializeField] private float responseSpeed = 8f;
 
     [Min(0.1f)]
     [Tooltip("Seconds for grass at the previous player position to settle.")]
-    [SerializeField] private float trailFadeSeconds = 0.9f;
+    [SerializeField] private float trailFadeSeconds = 0.65f;
+
+    [Range(0f, 0.3f)]
+    [SerializeField] private float spinBendStrength = 0.12f;
 
     private static readonly int InteractionCenterId =
         Shader.PropertyToID("_Grass_Interaction_Center");
@@ -45,70 +48,110 @@ public sealed class GrassPlayerInteraction : MonoBehaviour
     private Vector2 trailPosition;
     private float trailDirectionAngle;
     private float trailStrength;
+    private Vector2 previousPosition;
+    private float previousRotation;
 
     private void Awake()
     {
         movement = GetComponent<Movement>();
-        Vector3 position = transform.position;
-        trailPosition = new Vector2(position.x, position.z);
+        ResetInteractionState();
     }
 
-    private void Update()
+    private void OnEnable()
     {
-        Vector3 direction = movement.CurrentMoveDirection;
-        direction.y = 0f;
+        ResetInteractionState();
+    }
 
-        Vector2 travelDirection = new Vector2(
-            direction.x,
-            direction.z
-        );
+    private void ResetInteractionState()
+    {
+        Vector3 position = transform.position;
+        trailPosition = new Vector2(position.x, position.z);
+        previousPosition = trailPosition;
+        previousRotation = transform.eulerAngles.y;
+        lastTravelDirection = Vector2.up;
+        trailDirectionAngle = Mathf.PI * 0.5f;
+        strength = 0f;
+        trailStrength = 0f;
+    }
 
-        if (travelDirection.sqrMagnitude > 0.001f)
+    private void LateUpdate()
+    {
+        float deltaTime = Time.deltaTime;
+        if (movement == null || deltaTime <= 0f)
         {
-            lastTravelDirection = travelDirection.normalized;
+            return;
         }
-
-        float targetStrength = Mathf.Clamp01(direction.magnitude);
-        strength = targetStrength > strength
-            ? targetStrength
-            : Mathf.MoveTowards(
-                strength,
-                targetStrength,
-                responseSpeed * Time.deltaTime
-            );
 
         Vector3 position = transform.position;
         Vector2 currentPosition = new Vector2(position.x, position.z);
-        float captureDistance = Mathf.Min(radius * 0.4f, 0.5f);
-        float distanceFromTrailSqr =
-            (currentPosition - trailPosition).sqrMagnitude;
+        float rotation = transform.eulerAngles.y;
+        Vector2 displacement = currentPosition - previousPosition;
+        float angularSpeed = Mathf.Abs(
+            Mathf.DeltaAngle(previousRotation, rotation)) / deltaTime;
 
-        if (targetStrength > 0.01f && trailStrength <= 0.001f)
+        float teleportDistance = Mathf.Max(1f, radius * 2f);
+        if (displacement.sqrMagnitude > teleportDistance * teleportDistance)
         {
-            trailPosition = currentPosition;
-            trailDirectionAngle = Mathf.Atan2(
-                lastTravelDirection.y,
-                lastTravelDirection.x
-            );
-            trailStrength = targetStrength;
+            ResetInteractionState();
+            displacement = Vector2.zero;
+            angularSpeed = 0f;
         }
-        else if (targetStrength > 0.01f &&
-                 distanceFromTrailSqr <= captureDistance * captureDistance)
+
+        Vector3 movementDirection = movement.CurrentMoveDirection;
+        Vector2 travelDirection = new Vector2(
+            movementDirection.x, movementDirection.z);
+        float movingStrength = Mathf.Clamp01(travelDirection.magnitude);
+        float follow = 1f - Mathf.Exp(-Mathf.Max(0.1f, responseSpeed) * deltaTime);
+
+        if (movingStrength > 0.001f)
         {
-            trailStrength = Mathf.Max(trailStrength, targetStrength);
-            trailDirectionAngle = Mathf.Atan2(
-                lastTravelDirection.y,
-                lastTravelDirection.x
-            );
+            Vector2 actualDirection = displacement.sqrMagnitude > 0.000001f
+                ? displacement.normalized
+                : travelDirection.normalized;
+            Vector2 blendedDirection = Vector2.Lerp(
+                lastTravelDirection, actualDirection, follow);
+            lastTravelDirection = blendedDirection.sqrMagnitude > 0.000001f
+                ? blendedDirection.normalized
+                : actualDirection;
+        }
+
+        float targetStrength = Mathf.Max(
+            movingStrength,
+            Mathf.Clamp01(angularSpeed / 180f) * spinBendStrength);
+        strength = Mathf.Lerp(strength, targetStrength, follow);
+        if (strength < 0.001f)
+        {
+            strength = 0f;
+        }
+
+        if (movingStrength > 0.01f)
+        {
+            Vector2 oldTrailPosition = trailPosition;
+            trailPosition = Vector2.Lerp(
+                trailPosition, previousPosition,
+                1f - Mathf.Exp(-12f * deltaTime));
+            Vector2 wakeDirection = trailPosition - oldTrailPosition;
+            if (wakeDirection.sqrMagnitude > 0.000001f)
+            {
+                float targetAngle = Mathf.Atan2(wakeDirection.y, wakeDirection.x);
+                trailDirectionAngle = Mathf.LerpAngle(
+                    trailDirectionAngle * Mathf.Rad2Deg,
+                    targetAngle * Mathf.Rad2Deg,
+                    follow) * Mathf.Deg2Rad;
+            }
+            trailStrength = Mathf.Lerp(trailStrength, movingStrength, follow);
         }
         else
         {
             trailStrength = Mathf.MoveTowards(
                 trailStrength,
                 0f,
-                Time.deltaTime / Mathf.Max(0.1f, trailFadeSeconds)
+                deltaTime / Mathf.Max(0.1f, trailFadeSeconds)
             );
         }
+
+        previousPosition = currentPosition;
+        previousRotation = rotation;
 
         Vector4 centerData = new Vector4(
             position.x,
