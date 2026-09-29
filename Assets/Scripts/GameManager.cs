@@ -19,6 +19,15 @@ public class GameManager : MonoBehaviour
     [Tooltip("Level numbers where the paid speed power-up is available.")]
     [SerializeField] private int[] speedBoostLevels = { 4 };
 
+    [Header("Revive")]
+    [Tooltip("Starting value of the revive countdown (5 -> 0).")]
+    [SerializeField, Min(1)] private int reviveCountdownSeconds = 5;
+    [Tooltip("Revives offered per level attempt. 0 disables the revive flow.")]
+    [SerializeField, Min(0)] private int maxRevivesPerAttempt = 1;
+
+    private int revivesRemaining;
+    private bool reviveCountdownActive;
+
     private TerritoryManager currentTerritoryManager;
     private GameObject currentLevelInstance;
     private GameObject currentPlayerInstance;
@@ -38,6 +47,14 @@ public class GameManager : MonoBehaviour
 
     private void CleanupCurrentLevel()
     {
+        reviveCountdownActive = false;
+        revivesRemaining = 0;
+
+        if (uiManager != null)
+        {
+            uiManager.CancelReviveCountdown();
+        }
+
         if (currentPlayerBoundary != null)
         {
             currentPlayerBoundary.DeactivateBoundary();
@@ -55,8 +72,6 @@ public class GameManager : MonoBehaviour
                 HandlePlayerDeath;
         }
 
-        // Deactivate immediately so the next player's searches
-        // cannot find components belonging to the old player.
         if (currentPlayerInstance != null)
         {
             currentPlayerInstance.SetActive(false);
@@ -64,16 +79,13 @@ public class GameManager : MonoBehaviour
             currentPlayerInstance = null;
         }
 
-        // Destroy is deferred, but inactive objects are excluded
-        // from the existing default FindFirstObjectByType searches.
         if (currentLevelInstance != null)
         {
             currentLevelInstance.SetActive(false);
 
-            // Older enemies may have been spawned outside the level hierarchy.
-            // Explicitly remove every enemy tracked by this level's spawners.
             foreach (EnemySpawner levelSpawner in
-                     currentLevelInstance.GetComponentsInChildren<EnemySpawner>(true))
+                     currentLevelInstance
+                         .GetComponentsInChildren<EnemySpawner>(true))
             {
                 levelSpawner.DespawnAll();
             }
@@ -86,6 +98,7 @@ public class GameManager : MonoBehaviour
         currentPlayerTerritory = null;
         currentWinCondition = null;
         currentPlayerBoundary = null;
+
         boundaryPowerUpUsed = false;
         boundaryActivationInProgress = false;
         currentLevelEnded = false;
@@ -159,6 +172,9 @@ public class GameManager : MonoBehaviour
         CleanupCurrentLevel();
 
         currentLevelNumber = levelNumber;
+
+        revivesRemaining = maxRevivesPerAttempt;
+        reviveCountdownActive = false;
 
         currentLevelInstance = Instantiate(
             levelPrefabs[index],
@@ -275,6 +291,13 @@ public class GameManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        reviveCountdownActive = false;
+
+        if (uiManager != null)
+        {
+            uiManager.CancelReviveCountdown();
+        }
+
         if (currentPlayerBoundary != null)
         {
             currentPlayerBoundary.DeactivateBoundary();
@@ -282,12 +305,14 @@ public class GameManager : MonoBehaviour
 
         if (currentTerritoryManager != null)
         {
-            currentTerritoryManager.OnWinningPercentageReached -= HandleWinningPercentageReached;
+            currentTerritoryManager.OnWinningPercentageReached -=
+                HandleWinningPercentageReached;
         }
 
         if (currentPlayerTerritory != null)
         {
-            currentPlayerTerritory.OnPlayerDeath -= HandlePlayerDeath;
+            currentPlayerTerritory.OnPlayerDeath -=
+                HandlePlayerDeath;
         }
     }
 
@@ -295,6 +320,21 @@ public class GameManager : MonoBehaviour
     {
         currentLevelEnded = true;
         SetPlayerMovementEnabled(false);
+
+        // Pause the revive offer instead of failing immediately.
+        if (revivesRemaining > 0 &&
+            uiManager != null &&
+            uiManager.HasReviveUI)
+        {
+            revivesRemaining--;
+            reviveCountdownActive = true;
+
+            uiManager.StartReviveCountdown(
+                reviveCountdownSeconds,
+                HandleReviveCountdownFinished
+            );
+            return;
+        }
 
         if (uiManager != null)
         {
@@ -477,5 +517,178 @@ public class GameManager : MonoBehaviour
 
             boundaryActivationInProgress = false;
         }
+    }
+
+    private void HandleReviveCountdownFinished()
+    {
+        if (!reviveCountdownActive ||
+            !currentLevelEnded ||
+            currentLevelInstance == null)
+        {
+            return;
+        }
+
+        reviveCountdownActive = false;
+
+        if (uiManager != null)
+        {
+            uiManager.ActiveFailPanel();
+        }
+    }
+
+    public void RevivePlayer()
+    {
+        if (!reviveCountdownActive ||
+            !currentLevelEnded ||
+            currentLevelInstance == null ||
+            currentPlayerInstance == null ||
+            !currentPlayerInstance.activeInHierarchy)
+        {
+            return;
+        }
+
+        bool revived = RespawnPlayerAfterRevive();
+
+        reviveCountdownActive = false;
+
+        if (uiManager != null)
+        {
+            uiManager.CancelReviveCountdown();
+        }
+
+        if (!revived)
+        {
+            Time.timeScale = 0f;
+
+            if (uiManager != null)
+            {
+                uiManager.ActiveFailPanel();
+            }
+
+            return;
+        }
+
+        currentLevelEnded = false;
+
+        SetPlayerMovementEnabled(true);
+
+        Time.timeScale = 1f;
+    }
+
+    private bool RespawnPlayerAfterRevive()
+    {
+        if (currentTerritoryManager == null ||
+            !currentTerritoryManager.IsInitialized ||
+            currentPlayerInstance == null ||
+            currentPlayerTerritory == null)
+        {
+            return false;
+        }
+
+        Movement movement =
+            currentPlayerInstance.GetComponentInChildren<Movement>();
+
+        if (movement == null || !movement.isActiveAndEnabled)
+        {
+            return false;
+        }
+
+        Rigidbody body = movement.GetComponent<Rigidbody>();
+
+        if (body == null)
+        {
+            return false;
+        }
+
+        Transform spawnPoint =
+            currentTerritoryManager.PlayerSpawnPoint;
+
+        Vector3 spawnPosition = spawnPoint != null
+            ? spawnPoint.position
+            : new Vector3(0f, 0.64f, 0f);
+
+        Quaternion spawnRotation = spawnPoint != null
+            ? spawnPoint.rotation
+            : Quaternion.identity;
+
+        // The original spawn location may have been captured by an enemy.
+        if (!currentTerritoryManager.IsInsideTerritory(spawnPosition))
+        {
+            bool found = false;
+            float nearestDistanceSqr = float.PositiveInfinity;
+            Vector3 nearestPosition = spawnPosition;
+
+            foreach (Vector2Int cell in
+                     currentTerritoryManager.OwnedCells)
+            {
+                Vector3 position =
+                    currentTerritoryManager.CellToWorld(cell);
+
+                float dx = position.x - spawnPosition.x;
+                float dz = position.z - spawnPosition.z;
+                float distanceSqr = dx * dx + dz * dz;
+
+                if (distanceSqr >= nearestDistanceSqr)
+                {
+                    continue;
+                }
+
+                nearestDistanceSqr = distanceSqr;
+                nearestPosition = position;
+                found = true;
+            }
+
+            if (!found)
+            {
+                Debug.LogWarning(
+                    "Revive failed: the player has no remaining territory.",
+                    this
+                );
+
+                return false;
+            }
+
+            spawnPosition.x = nearestPosition.x;
+            spawnPosition.z = nearestPosition.z;
+        }
+
+        movement.SetCanMove(false);
+
+        Transform playerRoot = currentPlayerInstance.transform;
+
+        Vector3 bodyLocalPosition =
+            playerRoot.InverseTransformPoint(body.position);
+
+        Quaternion bodyLocalRotation =
+            Quaternion.Inverse(playerRoot.rotation) * body.rotation;
+
+        playerRoot.SetPositionAndRotation(
+            spawnPosition,
+            spawnRotation
+        );
+
+        body.position =
+            playerRoot.TransformPoint(bodyLocalPosition);
+
+        body.rotation =
+            playerRoot.rotation * bodyLocalRotation;
+
+        body.linearVelocity = Vector3.zero;
+        body.angularVelocity = Vector3.zero;
+
+        movement.SetGroundHeight(body.position.y);
+
+        Physics.SyncTransforms();
+
+        // Reuse the same player so power-up usage and timers are preserved.
+        // OnPlayerDied() already cleared and cancelled its active trail.
+        currentPlayerTerritory.enabled = true;
+
+        if (cameraFollow != null)
+        {
+            cameraFollow.SetTarget(playerRoot);
+        }
+
+        return true;
     }
 }

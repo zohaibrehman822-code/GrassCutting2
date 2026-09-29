@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 using System.Collections;
 
 public class UIManager : MonoBehaviour
@@ -22,7 +21,19 @@ public class UIManager : MonoBehaviour
     [Header("Boundary Power-Up")]
     [SerializeField] private Button boundaryPowerUpButton;
 
+
+
     private Coroutine playerDiedCoroutine;
+
+
+    [Header("Revive")]
+    [Tooltip("Optional container for the whole revive UI. Leave empty to toggle the button and the countdown text individually.")]
+    [SerializeField] private GameObject revivePanel;
+    [SerializeField] private Button reviveButton;
+    [SerializeField] private Text reviveCountdownText;
+
+    private Coroutine reviveCoroutine;
+    private System.Action reviveCountdownFinished;
 
     private void Awake()
     {
@@ -41,6 +52,10 @@ public class UIManager : MonoBehaviour
         {
             PlayerDiedText.gameObject.SetActive(false);
         }
+
+        // The revive widgets live inside GamePanel and must stay
+        // hidden outside the revive window.
+        SetReviveUIVisible(false);
     }
 
     private void Update()
@@ -167,6 +182,128 @@ public class UIManager : MonoBehaviour
             {
                 speedBoostButton.interactable = false;
             }
+        }
+    }
+
+    public bool HasReviveUI => reviveButton != null || revivePanel != null;
+
+    public void StartReviveCountdown(
+    int seconds,
+    System.Action onCountdownFinished)
+    {
+        CancelReviveCountdown();
+
+        if (!isActiveAndEnabled || reviveButton == null)
+        {
+            onCountdownFinished?.Invoke();
+            return;
+        }
+
+        if (winningPanel != null)
+        {
+            winningPanel.SetActive(false);
+        }
+
+        if (failPanel != null)
+        {
+            failPanel.SetActive(false);
+        }
+
+        if (GamePanel != null)
+        {
+            GamePanel.SetActive(true);
+        }
+
+        reviveCountdownFinished = onCountdownFinished;
+
+        SetReviveUIVisible(true);
+        reviveButton.interactable = true;
+
+        reviveCoroutine = StartCoroutine(
+            ReviveCountdownCoroutine(Mathf.Max(1, seconds))
+        );
+    }
+
+    private IEnumerator ReviveCountdownCoroutine(int seconds)
+    {
+        float deadline =
+            Time.realtimeSinceStartup + Mathf.Max(1, seconds);
+
+        int lastDisplayed = -1;
+
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            int remaining = Mathf.Max(
+                1,
+                Mathf.CeilToInt(
+                    deadline - Time.realtimeSinceStartup
+                )
+            );
+
+            if (remaining != lastDisplayed)
+            {
+                SetReviveCountdownText(remaining);
+                lastDisplayed = remaining;
+            }
+
+            yield return null;
+        }
+
+        SetReviveCountdownText(0);
+
+        reviveCoroutine = null;
+
+        System.Action onFinished = reviveCountdownFinished;
+        reviveCountdownFinished = null;
+
+        SetReviveUIVisible(false);
+
+        onFinished?.Invoke();
+    }
+
+    public void CancelReviveCountdown()
+    {
+        if (reviveCoroutine != null)
+        {
+            StopCoroutine(reviveCoroutine);
+            reviveCoroutine = null;
+        }
+
+        reviveCountdownFinished = null;
+        SetReviveUIVisible(false);
+    }
+
+    public void OnReviveButtonPressed()
+    {
+        if (gameManager != null)
+        {
+            gameManager.RevivePlayer();
+        }
+    }
+
+    private void SetReviveUIVisible(bool visible)
+    {
+        if (revivePanel != null)
+        {
+            revivePanel.SetActive(visible);
+        }
+
+        if (reviveButton != null)
+        {
+            reviveButton.gameObject.SetActive(visible);
+        }
+
+        if (reviveCountdownText != null)
+        {
+            reviveCountdownText.gameObject.SetActive(visible);
+        }
+    }
+
+    private void SetReviveCountdownText(int value)
+    {
+        if (reviveCountdownText != null)
+        {
+            reviveCountdownText.text = value.ToString();
         }
     }
 }
