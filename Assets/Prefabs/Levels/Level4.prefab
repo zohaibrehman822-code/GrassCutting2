@@ -1306,6 +1306,15 @@ MonoBehaviour:
     m_RotationOrder: 4
   castShadows: 0
   receiveShadows: 0
+  showCapturedBorder: 1
+  borderHeightMultiplier: 0.3
+  borderThicknessMultiplier: 0.12
+  borderOutwardOffsetMultiplier: 0.025
+  borderCornerRadiusMultiplier: 0.35
+  borderCurveSegments: 8
+  borderMaterial: {fileID: 0}
+  borderUsesGrassColor: 1
+  borderColor: {r: 0.65, g: 0.85, b: 0.22, a: 1}
 --- !u!114 &3555499977918189793
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1376,7 +1385,7 @@ Transform:
   m_GameObject: {fileID: 8799593024740551182}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.17, z: 0}
+  m_LocalPosition: {x: 0, y: 0.165, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

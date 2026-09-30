@@ -632,15 +632,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   planeRenderer: {fileID: 6607091999621712794}
-  grassPrefab: {fileID: 6170220693409598867, guid: e80e6bde50fe1514897522d0d360c34e, type: 3}
-  useLowPolyTufts: 1
-  grassCount: 70000
-  spacing: 0.095
+  grassPrefab: {fileID: 2991584805699182471, guid: add31667d7dccbd47b9564444927d798, type: 3}
+  useLowPolyTufts: 0
+  grassCount: 126818
+  spacing: 0.065
   mobileSpacingMultiplier: 1
-  jitter: 0.02
-  scaleRange: {x: 1.15, y: 1.25}
+  jitter: 0.01
+  scaleRange: {x: 0.3, y: 0.1}
   randomYRotation: 1
-  randomTiltDegrees: 6
+  randomTiltDegrees: 2
   castShadows: 0
   receiveShadows: 0
   batchTileSize: 4
@@ -783,7 +783,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7648026111840028895}
-  - component: {fileID: 2640900221805117587}
   m_Layer: 0
   m_Name: Level2
   m_TagString: Untagged
@@ -812,21 +811,6 @@ Transform:
   - {fileID: 5322495898627972705}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2640900221805117587
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5648904850929767513}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8694acda5a7dd2a4088ee6e7da85a2d5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnemySpawner
-  enemies:
-  - enemyPrefab: {fileID: 2260831856752467104, guid: 91fb0aab444e3cc4486fa56c209f423e, type: 3}
-    spawnPoint: {fileID: 7933375428778650063}
 --- !u!1 &6668847672360583898
 GameObject:
   m_ObjectHideFlags: 0
@@ -895,14 +879,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c1bb5fff91e0cf40bab446cef36dc5d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerTerritoryPrefabGrass: {fileID: 6231992595370580923, guid: 1f2ef1dc77f2ed949b80417568a4b698, type: 3}
-  useLowPolyTufts: 1
-  grassSpacing: 0.095
-  jitter: 0.02
-  scaleRange: {x: 1.15, y: 1.25}
+  playerTerritoryPrefabGrass: {fileID: 5676676584576990472, guid: 54cf22d54650d974baad8b61c105bfea, type: 3}
+  useLowPolyTufts: 0
+  grassSpacing: 0.065
+  jitter: 0.01
+  scaleRange: {x: 0.3, y: 0.2}
   heightMultiplier: 0.36
   randomYRotation: 1
   randomSeed: 6789
+  flowerPrefabs:
+  - {fileID: 3418226579968453277, guid: efdc764c61968e04a86ce9c35764792d, type: 3}
+  - {fileID: 2405196553184677431, guid: dee954de622c33a4d80a1c720687ff41, type: 3}
+  flowerDensity: 0.2
+  flowerSpacing: 0.5
+  flowerScaleRange: {x: 0.5625, y: 0.9375}
+  flowerYOffset: 0
+  animateFlowerGrowth: 1
   animateCapturedGrass: 1
   animateStartingTerritory: 0
   growthDuration: 0.4
@@ -934,6 +926,15 @@ MonoBehaviour:
     m_RotationOrder: 4
   castShadows: 0
   receiveShadows: 0
+  showCapturedBorder: 1
+  borderHeightMultiplier: 0.3
+  borderThicknessMultiplier: 0.12
+  borderOutwardOffsetMultiplier: 0.01666
+  borderCornerRadiusMultiplier: 0.35
+  borderCurveSegments: 8
+  borderMaterial: {fileID: 0}
+  borderUsesGrassColor: 1
+  borderColor: {r: 0.65, g: 0.85, b: 0.22, a: 1}
 --- !u!114 &3555499977918189793
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1310,7 +1311,7 @@ Transform:
   m_GameObject: {fileID: 8338176623265247767}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.17, z: 0}
+  m_LocalPosition: {x: 0, y: 0.165, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

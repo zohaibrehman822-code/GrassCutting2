@@ -232,7 +232,7 @@ MonoBehaviour:
   spacing: 0.065
   mobileSpacingMultiplier: 1
   jitter: 0.01
-  scaleRange: {x: 0.25, y: 0.1}
+  scaleRange: {x: 0.3, y: 0.1}
   randomYRotation: 1
   randomTiltDegrees: 2
   castShadows: 0
@@ -328,10 +328,18 @@ MonoBehaviour:
   useLowPolyTufts: 0
   grassSpacing: 0.065
   jitter: 0.01
-  scaleRange: {x: 0.25, y: 0.14}
+  scaleRange: {x: 0.3, y: 0.2}
   heightMultiplier: 0.36
   randomYRotation: 1
   randomSeed: 6789
+  flowerPrefabs:
+  - {fileID: 3418226579968453277, guid: efdc764c61968e04a86ce9c35764792d, type: 3}
+  - {fileID: 2405196553184677431, guid: dee954de622c33a4d80a1c720687ff41, type: 3}
+  flowerDensity: 0.15
+  flowerSpacing: 0.5
+  flowerScaleRange: {x: 0.5625, y: 0.9375}
+  flowerYOffset: 0
+  animateFlowerGrowth: 1
   animateCapturedGrass: 1
   animateStartingTerritory: 0
   growthDuration: 0.4
@@ -365,9 +373,9 @@ MonoBehaviour:
   receiveShadows: 0
   showCapturedBorder: 1
   borderHeightMultiplier: 0.3
-  borderThicknessMultiplier: 0.24
+  borderThicknessMultiplier: 0.12
   borderOutwardOffsetMultiplier: 0.016666668
-  borderCornerRadiusMultiplier: 1
+  borderCornerRadiusMultiplier: 0.35
   borderCurveSegments: 8
   borderMaterial: {fileID: 0}
   borderUsesGrassColor: 1
@@ -411,7 +419,7 @@ Transform:
   m_GameObject: {fileID: 8744745189214450501}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.16, z: 0}
+  m_LocalPosition: {x: 0, y: 0.202, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

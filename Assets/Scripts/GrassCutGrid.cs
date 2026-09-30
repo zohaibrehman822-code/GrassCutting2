@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -26,52 +27,53 @@ public class GrassCutGrid : MonoBehaviour
     public Component LastCutSource { get; private set; }
 
     private int builtVersion = -1;
+    private readonly HashSet<Component> borderMaskOwners = new HashSet<Component>();
 
     internal void SetTerritoryBorderMask(
         Component owner, IReadOnlyList<TerritoryBorderMesh.Contour> contours)
     {
+        if (owner == null) return;
+
         if (contours == null || contours.Count == 0)
         {
+            borderMaskOwners.Remove(owner);
             if (grassField != null) grassField.SetVisualMask(owner, null);
             return;
         }
-        if (!EnsureReady()) return;
 
-        HashSet<Vector2Int> candidateCells = new HashSet<Vector2Int>();
-        float padding = grassField.MaximumGrassHorizontalRadius;
-        foreach (TerritoryBorderMesh.Contour contour in contours)
-        {
-            Vector3 minimum = contour.Outer[0], maximum = minimum;
-            foreach (Vector3 point in contour.Outer)
-            {
-                minimum = Vector3.Min(minimum, point);
-                maximum = Vector3.Max(maximum, point);
-            }
-            Vector2Int min = GetCell(minimum - new Vector3(padding, 0f, padding));
-            Vector2Int max = GetCell(maximum + new Vector3(padding, 0f, padding));
-            foreach (Vector2Int cell in cells.Keys)
-                if (cell.x >= min.x && cell.x <= max.x && cell.y >= min.y && cell.y <= max.y)
-                    candidateCells.Add(cell);
-        }
+        if (!isActiveAndEnabled || !EnsureReady()) return;
 
+        TerritoryBorderMesh.Query query = new TerritoryBorderMesh.Query(
+            contours, true, cellSize, grassField.MaximumGrassHorizontalRadius);
+
+        // Applied synchronously: the deferred job was stopped by the next
+        // capture, so edge wild grass could stay visible outside the border.
         HashSet<int> hidden = new HashSet<int>();
-        foreach (Vector2Int cell in candidateCells)
+        foreach (Vector2Int cell in query.BoundaryCells)
         {
-            foreach (int index in cells[cell])
+            if (!cells.TryGetValue(cell, out List<int> indices)) continue;
+            for (int i = 0; i < indices.Count; i++)
             {
+                int index = indices[i];
+                // Capture already clears interior wild grass; inspect only the edge.
                 if (grassField.IsGrassCut(index)) continue;
+
                 Vector3 position = grassField.GetGrassPosition(index);
-                if (TerritoryBorderMesh.Contains(contours, position, true))
-                {
-                    hidden.Add(index);
-                    continue;
-                }
                 float radius = grassField.GetGrassHorizontalRadius(index);
-                if (TerritoryBorderMesh.DistanceSquared(contours, position, true) <= radius * radius)
+                if (query.Contains(position) || query.DistanceSquared(position) <= radius * radius)
                     hidden.Add(index);
             }
         }
+
+        borderMaskOwners.Add(owner);
         grassField.SetVisualMask(owner, hidden);
+    }
+
+    private void OnDisable()
+    {
+        foreach (Component owner in borderMaskOwners)
+            if (grassField != null) grassField.SetVisualMask(owner, null);
+        borderMaskOwners.Clear();
     }
 
     /// <summary>

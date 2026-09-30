@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -32,6 +33,34 @@ public class PlayerTerritoryRenderer : MonoBehaviour
 
     [SerializeField]
     private int randomSeed = 6789;
+
+
+
+    [Header("Territory Flowers")]
+    [Tooltip("Flower prefabs spawned on captured cells. Leave empty to disable flowers.")]
+    [SerializeField]
+    private GameObject[] flowerPrefabs;
+
+    [Tooltip("Chance that a candidate slot inside a captured cell becomes a flower. 0 = none, 1 = every slot.")]
+    [Range(0f, 1f)]
+    [SerializeField]
+    private float flowerDensity = 0.3f;
+
+    [Tooltip("World spacing of the candidate flower slots inside each cell. Smaller = more candidates.")]
+    [Min(0.1f)]
+    [SerializeField]
+    private float flowerSpacing = 0.5f;
+
+    [SerializeField]
+    private Vector2 flowerScaleRange = new Vector2(0.75f, 1.25f);
+
+    [Tooltip("Vertical offset from the captured cell ground plane.")]
+    [SerializeField]
+    private float flowerYOffset;
+
+    [Tooltip("Grow flowers in with the same curve, duration and stagger as the grass.")]
+    [SerializeField]
+    private bool animateFlowerGrowth = true;
 
     [Header("Growth Animation")]
     [SerializeField]
@@ -71,10 +100,10 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     [SerializeField] private bool showCapturedBorder = true;
 
     [SerializeField, Range(0.05f, 2f)] private float borderHeightMultiplier = 0.3f;
-    [SerializeField, Range(0.02f, 0.3f)] private float borderThicknessMultiplier = 0.24f;
-    [Tooltip("Extra outward clearance in territory cells, beyond the grass mesh footprint. Visual only.")]
+    [SerializeField, Range(0.02f, 0.3f)] private float borderThicknessMultiplier = 0.12f;
+    [Tooltip("Small visual clearance from the owned-cell edge. Grass no longer pushes the entire border outward.")]
     [SerializeField, Range(0f, 1f)] private float borderOutwardOffsetMultiplier = 0.025f;
-    [SerializeField, Range(0f, 3f)] private float borderCornerRadiusMultiplier = 1f;
+    [SerializeField, Range(0f, 0.35f)] private float borderCornerRadiusMultiplier = 0.35f;
     [SerializeField, Range(2, 16)] private int borderCurveSegments = 8;
 
     [Tooltip("Optional border material template. A runtime copy is used; the asset is not changed.")]
@@ -87,16 +116,12 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     private MeshRenderer borderRenderer;
     private Material runtimeBorderMaterial;
     private GrassCutGrid borderGrassGrid;
+    private readonly Dictionary<Vector2Int, List<int>> borderGrassCells = new Dictionary<Vector2Int, List<int>>();
+    private readonly List<float> grassFootprintRadii = new List<float>();
+    private readonly Dictionary<int, float> borderGrassWidthFactors = new Dictionary<int, float>();
+    private float maximumCapturedGrassRadius;
     private readonly List<Matrix4x4> borderFringeMatrices = new List<Matrix4x4>();
     private readonly List<Matrix4x4[]> borderFringeBatches = new List<Matrix4x4[]>();
-
-    private struct CellGrassOverhang
-    {
-        public float East, West, North, South;
-    }
-
-    private readonly Dictionary<Vector2Int, CellGrassOverhang> cellGrassOverhangs =
-        new Dictionary<Vector2Int, CellGrassOverhang>();
 
     private const int MaxInstancesPerBatch = 1023;
 
@@ -121,6 +146,18 @@ public class PlayerTerritoryRenderer : MonoBehaviour
 
     private readonly List<GrowingBlade> growingBlades =
         new List<GrowingBlade>();
+
+    private struct GrowingFlower
+    {
+        public Transform Transform;
+        public Vector3 TargetScale;
+        public float StartTime;
+    }
+
+    private readonly List<GrowingFlower> growingFlowers =
+        new List<GrowingFlower>();
+
+    private Transform flowerRoot;
 
     private readonly HashSet<Vector2Int> renderedCells =
         new HashSet<Vector2Int>();
@@ -226,6 +263,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         // Finish any previous growth before starting
         // a new territory update.
         FinishGrowth();
+        FinishFlowerGrowth();
 
         bool shouldAnimate =
             hasBuiltOnce
@@ -237,6 +275,9 @@ public class PlayerTerritoryRenderer : MonoBehaviour
 
         int firstNewMatrix =
             matrices.Count;
+
+        int firstNewFlower =
+            growingFlowers.Count;
 
         // IMPORTANT:
         // Grass is generated ONLY from logically owned cells.
@@ -256,13 +297,20 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                 shouldAnimate,
                 animationStartTime
             );
+
+            AddCellFlowers(
+                cell,
+                shouldAnimate,
+                animationStartTime
+            );
         }
 
         // New cells now have their actual grass placement/scale recorded.
         RebuildCapturedBorder(cells);
 
         if (matrices.Count ==
-            firstNewMatrix)
+            firstNewMatrix &&
+            growingFlowers.Count == firstNewFlower)
         {
             hasBuiltOnce = true;
             return;
@@ -272,7 +320,8 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         BuildBatches(firstNewMatrix);
 
         if (shouldAnimate &&
-            growingBlades.Count > 0)
+            (growingBlades.Count > 0 ||
+             growingFlowers.Count > 0))
         {
             nextGrowthUpdateTime = 0f;
 
@@ -329,9 +378,6 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         float cellMinimumZ =
             cellCenter.z -
             territoryCellSize * 0.5f;
-
-        Bounds bladeBounds = grassMesh.bounds;
-        CellGrassOverhang overhang = new CellGrassOverhang();
 
         for (int x = 0;
              x < bladesPerAxis;
@@ -414,20 +460,6 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                         )
                         : Quaternion.identity;
 
-                Vector3 boundsCenter = position + rotation * Vector3.Scale(bladeBounds.center, targetScale);
-                Vector3 right = rotation * Vector3.right;
-                Vector3 forward = rotation * Vector3.forward;
-                float extentX = Mathf.Abs(right.x) * bladeBounds.extents.x * Mathf.Abs(targetScale.x) +
-                    Mathf.Abs(forward.x) * bladeBounds.extents.z * Mathf.Abs(targetScale.z);
-                float extentZ = Mathf.Abs(right.z) * bladeBounds.extents.x * Mathf.Abs(targetScale.x) +
-                    Mathf.Abs(forward.z) * bladeBounds.extents.z * Mathf.Abs(targetScale.z);
-                overhang.East = Mathf.Max(overhang.East,
-                    boundsCenter.x + extentX - cellMinimumX - territoryCellSize);
-                overhang.West = Mathf.Max(overhang.West, cellMinimumX - boundsCenter.x + extentX);
-                overhang.North = Mathf.Max(overhang.North,
-                    boundsCenter.z + extentZ - cellMinimumZ - territoryCellSize);
-                overhang.South = Mathf.Max(overhang.South, cellMinimumZ - boundsCenter.z + extentZ);
-
                 AddGrassInstance(
                     position,
                     rotation,
@@ -439,7 +471,6 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                 );
             }
         }
-        cellGrassOverhangs[cell] = overhang;
     }
 
     /// <summary>
@@ -585,6 +616,22 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         int matrixIndex =
             matrices.Count;
 
+        Vector2Int lookupCell = new Vector2Int(
+            Mathf.FloorToInt(position.x / territoryCellSize),
+            Mathf.FloorToInt(position.z / territoryCellSize));
+        if (!borderGrassCells.TryGetValue(lookupCell, out List<int> indices))
+        {
+            indices = new List<int>();
+            borderGrassCells.Add(lookupCell, indices);
+        }
+        indices.Add(matrixIndex);
+        Bounds bounds = grassMesh.bounds;
+        float radius = new Vector2(
+            Mathf.Max(Mathf.Abs(bounds.min.x), Mathf.Abs(bounds.max.x)) * Mathf.Abs(targetScale.x),
+            Mathf.Max(Mathf.Abs(bounds.min.z), Mathf.Abs(bounds.max.z)) * Mathf.Abs(targetScale.z)).magnitude;
+        grassFootprintRadii.Add(radius);
+        maximumCapturedGrassRadius = Mathf.Max(maximumCapturedGrassRadius, radius);
+
         if (animate)
         {
             matrices.Add(
@@ -624,6 +671,186 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                     targetScale
                 )
             );
+        }
+    }
+
+    /// <summary>
+    /// Scatters flower prefabs over one newly captured cell.
+    /// Placement uses the same hash as the grass, so the same capture always
+    /// produces the same flowers.
+    /// </summary>
+    private void AddCellFlowers(
+    Vector2Int cell,
+    bool animate,
+    float animationStartTime)
+    {
+        if (flowerPrefabs == null ||
+            flowerPrefabs.Length == 0 ||
+            flowerDensity <= 0f)
+        {
+            return;
+        }
+
+        if (!EnsureFlowerRoot()) return;
+
+        float safeSpacing =
+            Mathf.Max(0.1f, flowerSpacing);
+
+        int slotsPerAxis =
+            Mathf.Max(
+                1,
+                Mathf.FloorToInt(
+                    territoryCellSize / safeSpacing
+                )
+            );
+
+        float actualSpacing =
+            territoryCellSize / slotsPerAxis;
+
+        float maximumJitter =
+            Mathf.Min(
+                jitter,
+                actualSpacing * 0.35f
+            );
+
+        Vector3 cellCenter =
+            territoryManager.CellToWorld(cell);
+
+        float cellMinimumX =
+            cellCenter.x -
+            territoryCellSize * 0.5f;
+
+        float cellMinimumZ =
+            cellCenter.z -
+            territoryCellSize * 0.5f;
+
+        for (int x = 0;
+             x < slotsPerAxis;
+             x++)
+        {
+            for (int z = 0;
+                 z < slotsPerAxis;
+                 z++)
+            {
+                // Density roll.
+                if (RandomValue(cell, x, z, 15) > flowerDensity)
+                {
+                    continue;
+                }
+
+                float randomX = RandomValue(cell, x, z, 10);
+                float randomZ = RandomValue(cell, x, z, 11);
+                float randomScale = RandomValue(cell, x, z, 12);
+                float randomRotation = RandomValue(cell, x, z, 13);
+                float randomDelay = RandomValue(cell, x, z, 14);
+                float randomPrefab = RandomValue(cell, x, z, 16);
+
+                GameObject prefab =
+                    flowerPrefabs[
+                        Mathf.Clamp(
+                            Mathf.FloorToInt(
+                                randomPrefab * flowerPrefabs.Length),
+                            0,
+                            flowerPrefabs.Length - 1)];
+
+                if (prefab == null) continue;
+
+                Vector3 position =
+                    new Vector3(
+                        cellMinimumX +
+                        (x + 0.5f) * actualSpacing +
+                        (randomX * 2f - 1f) * maximumJitter,
+
+                        cellCenter.y + flowerYOffset,
+
+                        cellMinimumZ +
+                        (z + 0.5f) * actualSpacing +
+                        (randomZ * 2f - 1f) * maximumJitter
+                    );
+
+                // Keep the prefab's authored scale, then apply the variation.
+                float scale =
+                    Mathf.Lerp(
+                        flowerScaleRange.x,
+                        flowerScaleRange.y,
+                        randomScale
+                    );
+
+                Vector3 prefabScale = prefab.transform.localScale;
+
+                Vector3 targetScale =
+                    new Vector3(
+                        prefabScale.x * scale,
+                        prefabScale.y * scale,
+                        prefabScale.z * scale
+                    );
+
+                Quaternion rotation =
+                    randomYRotation
+                        ? Quaternion.Euler(
+                            0f,
+                            randomRotation * 360f,
+                            0f
+                        )
+                        : Quaternion.identity;
+
+                AddFlowerInstance(
+                    prefab,
+                    position,
+                    rotation,
+                    targetScale,
+                    animate,
+                    animationStartTime +
+                    randomDelay * growthStagger
+                );
+            }
+        }
+    }
+
+    private bool EnsureFlowerRoot()
+    {
+        if (flowerRoot != null) return true;
+        if (flowerPrefabs == null || flowerPrefabs.Length == 0) return false;
+
+        GameObject root = new GameObject(name + "_TerritoryFlowers");
+        root.layer = gameObject.layer;
+        root.transform.SetParent(
+            territoryManager != null ? territoryManager.transform : transform, false);
+        flowerRoot = root.transform;
+        return true;
+    }
+
+    private void AddFlowerInstance(
+    GameObject prefab,
+    Vector3 position,
+    Quaternion rotation,
+    Vector3 targetScale,
+    bool animate,
+    float startTime)
+    {
+        if (!EnsureFlowerRoot()) return;
+
+        GameObject instance =
+            Instantiate(prefab, position, rotation, flowerRoot);
+        instance.name = prefab.name;
+        instance.SetActive(true);
+
+        if (animate && animateFlowerGrowth)
+        {
+            instance.transform.localScale = Vector3.zero;
+
+            growingFlowers.Add(
+                new GrowingFlower
+                {
+                    Transform = instance.transform,
+                    TargetScale = targetScale,
+                    StartTime = startTime
+                }
+            );
+        }
+        else
+        {
+            instance.transform.localScale = targetScale;
         }
     }
 
@@ -701,41 +928,19 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         if (runtimeBorderMaterial.HasProperty("_Color"))
             runtimeBorderMaterial.SetColor("_Color", color);
 
-        // The blades are inset from cell edges. Only their actual overhang
-        // needs clearance, not the entire mesh radius plus extra curve padding.
+        // Follow logical ownership; large tufts must not push every edge outward.
         HashSet<Vector2Int> owned = cells as HashSet<Vector2Int> ?? new HashSet<Vector2Int>(cells);
-        float footprint = 0f;
-        foreach (Vector2Int cell in owned)
-        {
-            if (!cellGrassOverhangs.TryGetValue(cell, out CellGrassOverhang overhang)) continue;
-            bool east = !owned.Contains(cell + Vector2Int.right);
-            bool west = !owned.Contains(cell + Vector2Int.left);
-            bool north = !owned.Contains(cell + Vector2Int.up);
-            bool south = !owned.Contains(cell + Vector2Int.down);
-            if (east) footprint = Mathf.Max(footprint, overhang.East);
-            if (west) footprint = Mathf.Max(footprint, overhang.West);
-            if (north) footprint = Mathf.Max(footprint, overhang.North);
-            if (south) footprint = Mathf.Max(footprint, overhang.South);
-            // Include corner overhang without making every cell pay for the
-            // largest possible random rotation and scale of the whole prefab.
-            if (east && north) footprint = Mathf.Max(footprint, new Vector2(overhang.East, overhang.North).magnitude);
-            if (east && south) footprint = Mathf.Max(footprint, new Vector2(overhang.East, overhang.South).magnitude);
-            if (west && north) footprint = Mathf.Max(footprint, new Vector2(overhang.West, overhang.North).magnitude);
-            if (west && south) footprint = Mathf.Max(footprint, new Vector2(overhang.West, overhang.South).magnitude);
-        }
-        float outwardClearance = footprint +
-            Mathf.Max(0f, borderOutwardOffsetMultiplier) * territoryCellSize;
+        float outwardClearance = Mathf.Clamp(borderOutwardOffsetMultiplier, 0f, 0.05f) * territoryCellSize;
 
         List<TerritoryBorderMesh.Contour> contours = TerritoryBorderMesh.Rebuild(
             borderMesh, territoryManager, cells,
             borderObject.transform.worldToLocalMatrix,
             Mathf.Max(0.01f, borderHeightMultiplier * territoryCellSize),
             Mathf.Max(0.01f, borderThicknessMultiplier * territoryCellSize),
-            borderCornerRadiusMultiplier, borderCurveSegments, outwardClearance
+            Mathf.Min(borderCornerRadiusMultiplier, 0.35f), borderCurveSegments, outwardClearance
         );
         RebuildBorderGrass(owned, contours, outwardClearance);
-        if (borderGrassGrid != null)
-            borderGrassGrid.SetTerritoryBorderMask(this, isActiveAndEnabled ? contours : null);
+
         borderRenderer.shadowCastingMode = castShadows
             ? ShadowCastingMode.On : ShadowCastingMode.Off;
         borderRenderer.receiveShadows = false;
@@ -748,71 +953,103 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     private void ClearBorderGrass()
     {
         borderFringeMatrices.Clear();
+        RestoreBorderGrassWidths();
         if (borderGrassGrid != null) borderGrassGrid.SetTerritoryBorderMask(this, null);
+    }
+
+    private void RestoreBorderGrassWidths()
+    {
+        if (borderGrassWidthFactors.Count == 0) return;
+
+        List<int> restore = new List<int>(borderGrassWidthFactors.Keys);
+        borderGrassWidthFactors.Clear();
+        foreach (int index in restore)
+            if (index < matrices.Count) UploadBorderGrassMatrix(index, matrices[index]);
     }
 
     private void RebuildBorderGrass(
         HashSet<Vector2Int> owned, IReadOnlyList<TerritoryBorderMesh.Contour> contours,
         float clearance)
     {
+        // Never decorate unowned cells: this made the visible capture too large.
         borderFringeMatrices.Clear();
-        if (!isActiveAndEnabled || contours.Count == 0) return;
 
-        HashSet<Vector2Int> candidates = new HashSet<Vector2Int>();
-        int range = Mathf.Max(1, Mathf.CeilToInt(clearance / territoryCellSize) + 1);
-        foreach (Vector2Int cell in owned)
+        // Clipped synchronously: the deferred job was stopped by the next
+        // capture, so blades on freshly captured edges kept full width and
+        // spilled outside the border.
+        if (borderGrassGrid != null)
         {
-            if (owned.Contains(cell + Vector2Int.right) && owned.Contains(cell + Vector2Int.left) &&
-                owned.Contains(cell + Vector2Int.up) && owned.Contains(cell + Vector2Int.down)) continue;
-            for (int x = -range; x <= range; x++)
-                for (int z = -range; z <= range; z++)
-                {
-                    Vector2Int candidate = cell + new Vector2Int(x, z);
-                    if (!owned.Contains(candidate)) candidates.Add(candidate);
-                }
+            borderGrassGrid.SetTerritoryBorderMask(
+                this, contours != null && contours.Count > 0 ? contours : null);
         }
 
-        int rows = Mathf.Max(1, Mathf.RoundToInt(territoryCellSize / Mathf.Max(0.02f, grassSpacing)));
-        float step = territoryCellSize / rows;
-        Bounds bounds = grassMesh.bounds;
-        float meshRadius = new Vector2(
-            Mathf.Max(Mathf.Abs(bounds.min.x), Mathf.Abs(bounds.max.x)),
-            Mathf.Max(Mathf.Abs(bounds.min.z), Mathf.Abs(bounds.max.z))
-        ).magnitude;
-        Bounds playBounds = territoryManager.PlayArea.bounds;
-        foreach (Vector2Int cell in candidates)
+        if (!isActiveAndEnabled || contours == null || contours.Count == 0)
         {
-            Vector3 centre = territoryManager.CellToWorld(cell);
-            for (int x = 0; x < rows; x++)
-                for (int z = 0; z < rows; z++)
-                {
-                    Vector3 position = centre + new Vector3(
-                        (x + 0.5f) * step - territoryCellSize * 0.5f, 0f,
-                        (z + 0.5f) * step - territoryCellSize * 0.5f
-                    );
-                    if (position.x < playBounds.min.x || position.x > playBounds.max.x ||
-                        position.z < playBounds.min.z || position.z > playBounds.max.z) continue;
-                    // Decoration must not repaint another owner's captured land.
-                    if (territoryManager.IsInsideTerritory(position) ||
-                        territoryManager.IsInsideEnemyTerritory(position)) continue;
-                    if (!TerritoryBorderMesh.Contains(contours, position, false)) continue;
-                    float distance = Mathf.Sqrt(TerritoryBorderMesh.DistanceSquared(contours, position, false));
-                    float scale = Mathf.Lerp(scaleRange.x, scaleRange.y, RandomValue(cell, x, z, 2));
-                    float horizontalScale = meshRadius > 0.00001f
-                        ? Mathf.Min(scale, distance * 0.85f / meshRadius) : scale;
-                    if (horizontalScale <= 0.001f) continue;
-                    Quaternion rotation = randomYRotation
-                        ? Quaternion.Euler(0f, RandomValue(cell, x, z, 3) * 360f, 0f) : Quaternion.identity;
-                    borderFringeMatrices.Add(Matrix4x4.TRS(position, rotation,
-                        new Vector3(horizontalScale, scale * heightMultiplier, horizontalScale)));
-                }
+            RestoreBorderGrassWidths();
+            return;
         }
 
-        int count = (borderFringeMatrices.Count + MaxInstancesPerBatch - 1) / MaxInstancesPerBatch;
-        while (borderFringeBatches.Count < count)
-            borderFringeBatches.Add(new Matrix4x4[MaxInstancesPerBatch]);
-        for (int i = 0; i < borderFringeMatrices.Count; i++)
-            borderFringeBatches[i / MaxInstancesPerBatch][i % MaxInstancesPerBatch] = borderFringeMatrices[i];
+        TerritoryBorderMesh.Query inner = new TerritoryBorderMesh.Query(
+            contours, false, territoryCellSize, maximumCapturedGrassRadius / 0.95f + 0.001f);
+        ApplyCapturedBorderGrass(inner);
+    }
+
+    private void ApplyCapturedBorderGrass(TerritoryBorderMesh.Query query)
+    {
+        HashSet<int> updated = new HashSet<int>();
+
+        foreach (Vector2Int cell in query.BoundaryCells)
+        {
+            List<int> indices;
+            if (!borderGrassCells.TryGetValue(cell, out indices)) continue;
+            for (int i = 0; i < indices.Count; i++)
+            {
+                int index = indices[i];
+                if (index >= matrices.Count || index >= grassFootprintRadii.Count) continue;
+
+                Vector3 position = matrices[index].GetColumn(3);
+                float radius = grassFootprintRadii[index];
+                float factor = 1f;
+                if (radius > 0.00001f)
+                {
+                    factor = query.Contains(position)
+                        ? Mathf.Clamp01(Mathf.Sqrt(query.DistanceSquared(position)) * 0.95f / radius)
+                        : 0f;
+                }
+
+                if (factor < 0.999f) borderGrassWidthFactors[index] = factor;
+                else borderGrassWidthFactors.Remove(index);
+                updated.Add(index);
+                UploadBorderGrassMatrix(index, matrices[index]);
+            }
+        }
+
+        if (borderGrassWidthFactors.Count == 0) return;
+
+        List<int> restore = new List<int>();
+        foreach (KeyValuePair<int, float> entry in borderGrassWidthFactors)
+            if (!updated.Contains(entry.Key)) restore.Add(entry.Key);
+
+        foreach (int index in restore)
+        {
+            borderGrassWidthFactors.Remove(index);
+            if (index < matrices.Count) UploadBorderGrassMatrix(index, matrices[index]);
+        }
+    }
+
+    private void UploadBorderGrassMatrix(int index, Matrix4x4 matrix)
+    {
+        int batch = index / MaxInstancesPerBatch;
+        int slot = index % MaxInstancesPerBatch;
+        if (batch >= batches.Count || slot >= batchCounts[batch]) return;
+        if (borderGrassWidthFactors.TryGetValue(index, out float factor))
+        {
+            // Preserve height and growth; narrow only blades touching the border.
+            matrix.SetColumn(0, matrix.GetColumn(0) * factor);
+            matrix.SetColumn(2, matrix.GetColumn(2) * factor);
+            if (factor <= 0.001f) matrix.SetColumn(1, Vector4.zero);
+        }
+        batches[batch][slot] = matrix;
     }
 
     private void OnEnable()
@@ -832,6 +1069,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     private void OnDestroy()
     {
         ClearBorderGrass();
+        ClearFlowers();
         if (borderObject != null)
         {
             borderObject.SetActive(false);
@@ -844,6 +1082,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
     private void Update()
     {
         UpdateGrowthAnimation();
+        UpdateFlowerGrowth();
         DrawGrass();
     }
 
@@ -892,6 +1131,75 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                 )
             );
         }
+    }
+
+    private void UpdateFlowerGrowth()
+    {
+        if (growingFlowers.Count == 0)
+        {
+            return;
+        }
+
+        float currentTime = Time.time;
+
+        if (currentTime >= growthEndTime)
+        {
+            FinishFlowerGrowth();
+            return;
+        }
+
+        float safeDuration = Mathf.Max(0.1f, growthDuration);
+
+        for (int i = growingFlowers.Count - 1; i >= 0; i--)
+        {
+            GrowingFlower flower = growingFlowers[i];
+
+            if (flower.Transform == null)
+            {
+                growingFlowers.RemoveAt(i);
+                continue;
+            }
+
+            if (currentTime < flower.StartTime)
+            {
+                continue;
+            }
+
+            float progress = Mathf.Clamp01(
+                (currentTime - flower.StartTime) / safeDuration
+            );
+
+            float scaleProgress = growthCurve != null
+                ? growthCurve.Evaluate(progress)
+                : Mathf.SmoothStep(0f, 1f, progress);
+
+            flower.Transform.localScale =
+                flower.TargetScale * Mathf.Clamp01(scaleProgress);
+
+            if (progress >= 1f)
+            {
+                growingFlowers.RemoveAt(i);
+            }
+        }
+    }
+
+    private void FinishFlowerGrowth()
+    {
+        if (growingFlowers.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < growingFlowers.Count; i++)
+        {
+            GrowingFlower flower = growingFlowers[i];
+            if (flower.Transform != null)
+            {
+                flower.Transform.localScale = flower.TargetScale;
+            }
+        }
+
+        growingFlowers.Clear();
     }
 
     private void FinishGrowth()
@@ -951,9 +1259,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
             return;
         }
 
-        batches[batchIndex]
-            [indexInsideBatch] =
-                matrix;
+        UploadBorderGrassMatrix(matrixIndex, matrix);
     }
 
     private void BuildBatches(
@@ -986,14 +1292,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                 index /
                 MaxInstancesPerBatch;
 
-            int indexInsideBatch =
-                index %
-                MaxInstancesPerBatch;
-
-            batches[batchIndex]
-                [indexInsideBatch] =
-                    matrices[index];
-
+            int indexInsideBatch = index % MaxInstancesPerBatch;
             int newCount =
                 indexInsideBatch + 1;
 
@@ -1003,6 +1302,7 @@ public class PlayerTerritoryRenderer : MonoBehaviour
                 batchCounts[batchIndex] =
                     newCount;
             }
+            UploadBorderGrassMatrix(index, matrices[index]);
         }
     }
 
@@ -1189,11 +1489,30 @@ public class PlayerTerritoryRenderer : MonoBehaviour
         return cutAny;
     }
 
+    /// <summary>
+    /// Destroys every spawned flower. The old root is deactivated first so
+    /// nothing from the previous capture is still visible for the rest of
+    /// the frame while new flowers are spawned.
+    /// </summary>
+    private void ClearFlowers()
+    {
+        growingFlowers.Clear();
+
+        if (flowerRoot == null) return;
+
+        flowerRoot.gameObject.SetActive(false);
+        Destroy(flowerRoot.gameObject);
+        flowerRoot = null;
+    }
+
     public void Clear()
     {
         ClearBorderGrass();
+        ClearFlowers();
         if (borderObject != null) borderObject.SetActive(false);
-        cellGrassOverhangs.Clear();
+        borderGrassCells.Clear();
+        grassFootprintRadii.Clear();
+        maximumCapturedGrassRadius = 0f;
         growingBlades.Clear();
         renderedCells.Clear();
         cutMatrixIndices.Clear();
@@ -1241,6 +1560,103 @@ internal static class TerritoryBorderMesh
     {
         public List<Vector3> Inner;
         public List<Vector3> Outer;
+    }
+
+    // Exact contour tests with local edge buckets instead of scanning every
+    // segment for every grass blade. All loops use even/odd parity, including holes.
+    internal sealed class Query
+    {
+        private struct Segment
+        {
+            public Vector2 A, B;
+        }
+
+        private readonly List<Segment> segments = new List<Segment>();
+        private readonly Dictionary<int, List<int>> rows = new Dictionary<int, List<int>>();
+        private readonly Dictionary<Vector2Int, List<int>> nearby = new Dictionary<Vector2Int, List<int>>();
+        private readonly float cellSize;
+        private readonly float padding;
+        internal IEnumerable<Vector2Int> BoundaryCells => nearby.Keys;
+
+        internal Query(IReadOnlyList<Contour> contours, bool outer, float size, float radius)
+        {
+            cellSize = Mathf.Max(0.01f, size);
+            padding = Mathf.Max(0.00001f, radius);
+            foreach (Contour contour in contours)
+            {
+                List<Vector3> points = outer ? contour.Outer : contour.Inner;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    Vector3 start = points[i], end = points[(i + 1) % points.Count];
+                    Segment segment = new Segment {
+                        A = new Vector2(start.x, start.z), B = new Vector2(end.x, end.z)
+                    };
+                    int index = segments.Count;
+                    segments.Add(segment);
+                    int firstRow = Mathf.FloorToInt(Mathf.Min(start.z, end.z) / cellSize);
+                    int lastRow = Mathf.FloorToInt(Mathf.Max(start.z, end.z) / cellSize);
+                    for (int row = firstRow; row <= lastRow; row++)
+                    {
+                        if (!rows.TryGetValue(row, out List<int> list))
+                        {
+                            list = new List<int>();
+                            rows.Add(row, list);
+                        }
+                        list.Add(index);
+                    }
+                    int minX = Mathf.FloorToInt((Mathf.Min(start.x, end.x) - padding) / cellSize);
+                    int maxX = Mathf.FloorToInt((Mathf.Max(start.x, end.x) + padding) / cellSize);
+                    int minZ = Mathf.FloorToInt((Mathf.Min(start.z, end.z) - padding) / cellSize);
+                    int maxZ = Mathf.FloorToInt((Mathf.Max(start.z, end.z) + padding) / cellSize);
+                    for (int x = minX; x <= maxX; x++)
+                        for (int z = minZ; z <= maxZ; z++)
+                        {
+                            Vector2Int key = new Vector2Int(x, z);
+                            if (!nearby.TryGetValue(key, out List<int> list))
+                            {
+                                list = new List<int>();
+                                nearby.Add(key, list);
+                            }
+                            list.Add(index);
+                        }
+                }
+            }
+        }
+
+        internal bool Contains(Vector3 point)
+        {
+            bool inside = false;
+            int row = Mathf.FloorToInt(point.z / cellSize);
+            if (!rows.TryGetValue(row, out List<int> indices)) return false;
+            foreach (int index in indices)
+            {
+                Segment segment = segments[index];
+                Vector2 a = segment.A, b = segment.B;
+                if ((a.y > point.z) != (b.y > point.z) &&
+                    point.x < (b.x - a.x) * (point.z - a.y) / (b.y - a.y) + a.x)
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        // Distances beyond padding are irrelevant for footprint clipping/masks.
+        internal float DistanceSquared(Vector3 point)
+        {
+            Vector2Int cell = new Vector2Int(
+                Mathf.FloorToInt(point.x / cellSize), Mathf.FloorToInt(point.z / cellSize));
+            float minimum = padding * padding;
+            if (!nearby.TryGetValue(cell, out List<int> indices)) return minimum;
+            Vector2 position = new Vector2(point.x, point.z);
+            foreach (int index in indices)
+            {
+                Segment segment = segments[index];
+                Vector2 delta = segment.B - segment.A;
+                float t = delta.sqrMagnitude > 0.00000001f
+                    ? Mathf.Clamp01(Vector2.Dot(position - segment.A, delta) / delta.sqrMagnitude) : 0f;
+                minimum = Mathf.Min(minimum, (position - segment.A - delta * t).sqrMagnitude);
+            }
+            return minimum;
+        }
     }
 
     internal static bool Contains(IReadOnlyList<Contour> contours, Vector3 point, bool outer)
@@ -1338,11 +1754,11 @@ internal static class TerritoryBorderMesh
             // Offset the original polygon BEFORE rounding. Offsetting an
             // already-rounded concave arc can fold it back over itself.
             List<Vector3> expanded = OffsetBoundaryLoop(
-                points, Mathf.Max(0f, outwardClearance)
+                ChamferStaircaseCorners(points, cellSize), Mathf.Max(0f, outwardClearance)
             );
             List<Vector3> rounded = RoundBoundaryLoop(
                 expanded, radius, Mathf.Clamp(cornerCurveSegments, 2, 16), out _,
-                Mathf.Max(0.001f, outwardClearance)
+                radius
             );
             List<Vector3> outer = new List<Vector3>(rounded.Count);
             for (int i = 0; i < rounded.Count; i++)
@@ -1479,6 +1895,70 @@ internal static class TerritoryBorderMesh
             if (closed && loop.Count >= 4) loops.Add(loop);
         }
         return loops;
+    }
+
+    /// <summary>
+    /// Flattens a one-cell staircase. Each staircase corner becomes two points
+    /// half a cell back along its own edges, so consecutive corners land on the
+    /// ideal midline and the boundary reads as a smooth line instead of steps.
+    /// Corners whose runs are longer than a cell, or whose turn direction does
+    /// not alternate (real 90 degree corners of square blocks, full circles)
+    /// are left untouched so compact shapes keep their exact footprint.
+    /// </summary>
+    private static List<Vector3> ChamferStaircaseCorners(List<Vector3> points, float cellSize)
+    {
+        int count = points.Count;
+        if (cellSize <= 0f || count < 6) return points;
+
+        bool[] isCorner = new bool[count];
+        int[] turn = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 incoming = points[i] - points[(i + count - 1) % count];
+            Vector3 outgoing = points[(i + 1) % count] - points[i];
+            float cross = incoming.x * outgoing.z - incoming.z * outgoing.x;
+            if (Mathf.Abs(cross) > 1e-7f) { isCorner[i] = true; turn[i] = cross > 0f ? 1 : -1; }
+        }
+
+        List<int> corners = new List<int>(count);
+        for (int i = 0; i < count; i++) if (isCorner[i]) corners.Add(i);
+        if (corners.Count < 3) return points;
+
+        float tolerance = cellSize * 0.001f;
+        bool[] chamfer = new bool[count];
+        for (int k = 0; k < corners.Count; k++)
+        {
+            int i = corners[k];
+            int previous = corners[(k + corners.Count - 1) % corners.Count];
+            int next = corners[(k + 1) % corners.Count];
+            float previousRun = (points[i] - points[previous]).magnitude;
+            float nextRun = (points[next] - points[i]).magnitude;
+            if (Mathf.Abs(previousRun - cellSize) > tolerance) continue;
+            if (Mathf.Abs(nextRun - cellSize) > tolerance) continue;
+            if (turn[i] == turn[previous] || turn[i] == turn[next]) continue;
+            chamfer[i] = true;
+        }
+
+        List<Vector3> result = new List<Vector3>(count + 8);
+        for (int i = 0; i < count; i++)
+        {
+            if (!chamfer[i]) { result.Add(points[i]); continue; }
+            Vector3 incoming = (points[i] - points[(i + count - 1) % count]).normalized;
+            Vector3 outgoing = (points[(i + 1) % count] - points[i]).normalized;
+            result.Add(points[i] - incoming * (cellSize * 0.5f));
+            result.Add(points[i] + outgoing * (cellSize * 0.5f));
+        }
+
+        List<Vector3> dedup = new List<Vector3>(result.Count);
+        for (int i = 0; i < result.Count; i++)
+        {
+            Vector3 current = result[i];
+            if (dedup.Count > 0 && (current - dedup[dedup.Count - 1]).sqrMagnitude < 1e-8f) continue;
+            dedup.Add(current);
+        }
+        if (dedup.Count > 1 && (dedup[0] - dedup[dedup.Count - 1]).sqrMagnitude < 1e-8f)
+            dedup.RemoveAt(dedup.Count - 1);
+        return dedup.Count >= 3 ? dedup : points;
     }
 
     private static List<Vector3> OffsetBoundaryLoop(List<Vector3> points, float distance)
