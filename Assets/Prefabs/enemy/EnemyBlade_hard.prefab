@@ -268,7 +268,7 @@ MonoBehaviour:
   logStateChanges: 0
   territoryRenderer: {fileID: 0}
   grassGrid: {fileID: 0}
-  enableCutGrassTrail: 1
+  enableCutGrassTrail: 0
   cuttedGrassPrefab: {fileID: 5700229833463833481, guid: bc838b29fe2b384479ef9fc728d40565, type: 3}
   cuttedGrassScale: 0.4
   trailHeightOffset: 0.02
@@ -2619,14 +2619,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c1bb5fff91e0cf40bab446cef36dc5d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerTerritoryRenderer
-  playerTerritoryPrefabGrass: {fileID: 4457337109926699152, guid: dcb9f1764d5b8d84197303f1987aca2d, type: 3}
-  useLowPolyTufts: 1
-  grassSpacing: 0.095
-  jitter: 0.02
-  scaleRange: {x: 0.8, y: 1}
+  playerTerritoryPrefabGrass: {fileID: 1733039020644730152, guid: 0fad1ef63bab4f14f9ab28b85c90813a, type: 3}
+  useLowPolyTufts: 0
+  grassSpacing: 0.065
+  jitter: 0.01
+  scaleRange: {x: 0.3, y: 0.2}
   heightMultiplier: 0.36
   randomYRotation: 1
   randomSeed: 6789
+  flowerPrefabs: []
+  flowerDensity: 0.3
+  flowerSpacing: 0.5
+  flowerScaleRange: {x: 0.75, y: 1.25}
+  flowerYOffset: 0
+  animateFlowerGrowth: 1
   animateCapturedGrass: 1
   animateStartingTerritory: 0
   growthDuration: 0.4
@@ -2658,3 +2664,12 @@ MonoBehaviour:
     m_RotationOrder: 4
   castShadows: 0
   receiveShadows: 0
+  showCapturedBorder: 1
+  borderHeightMultiplier: 0.3
+  borderThicknessMultiplier: 0.12
+  borderOutwardOffsetMultiplier: 0.025
+  borderCornerRadiusMultiplier: 0.35
+  borderCurveSegments: 8
+  borderMaterial: {fileID: 0}
+  borderUsesGrassColor: 1
+  borderColor: {r: 0.7215686, g: 0.5254902, b: 0.04313726, a: 1}
